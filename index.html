@@ -17,7 +17,7 @@
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
-  body{background:var(--paper); color:var(--ink); font-family:'Inter',system-ui,sans-serif; padding-bottom:96px; -webkit-tap-highlight-color: transparent;}
+  body{background:var(--paper); color:var(--ink); font-family:'Inter',system-ui,sans-serif; padding-bottom:24px; -webkit-tap-highlight-color: transparent;}
   h1,h2,h3{font-family:'Barlow Condensed',sans-serif; letter-spacing:.01em; margin:0;}
   .mono{font-family:'IBM Plex Mono',monospace;}
 
@@ -105,11 +105,11 @@
 
   .ocr-status{font-size:12.5px; color:var(--muted); margin-top:6px; min-height:16px;}
 
-  .doc-grid{display:grid; grid-template-columns:1fr auto; align-items:center; gap:10px 8px;}
-  .doc-grid .q{font-size:14px;}
+  .doc-item{padding:8px 0; border-bottom:1px dashed var(--line);}
+  .doc-item:last-child{border-bottom:none;}
+  .doc-item .q{font-size:13.5px; font-weight:600; color:var(--ink); line-height:1.35; margin-bottom:6px;}
+  .chip-toggle button.on-neutral{background:var(--steel); color:#fff;}
 
-  footer.savebar{position:fixed; bottom:0; left:0; right:0; z-index:40; background:#fff; border-top:1.5px solid var(--line); padding:10px 16px calc(10px + env(safe-area-inset-bottom)); display:flex; gap:10px; box-shadow:0 -4px 14px rgba(0,0,0,.06);}
-  footer.savebar .btn{margin-top:0;}
 
   table.records{width:100%; border-collapse:collapse; font-size:12.5px;}
   table.records th, table.records td{border:1px solid var(--line); padding:7px 6px; text-align:left; vertical-align:top;}
@@ -268,31 +268,50 @@
   <div class="card" id="section-5">
     <h2><span class="num">5</span> Dispatch Documentation</h2>
     <div class="subtext">Cross-check what's written on the dispatch/OGRA paperwork against your own observation above.</div>
-    <div class="doc-grid">
+
+    <div class="doc-item">
       <div class="q">Seal status matches document</div>
       <div class="chip-toggle" id="docSealMatch"><button data-val="yes" class="on-ok">Yes</button><button data-val="no" class="on-bad">No</button></div>
+    </div>
 
+    <div class="doc-item">
       <div class="q">Damage mentioned on document (if any)</div>
-      <div class="chip-toggle" id="docDamageMentioned"><button data-val="yes" class="on-ok">Yes</button><button data-val="no" class="on-bad">No</button></div>
+      <div class="chip-toggle" id="docDamageMentioned"><button data-val="yes" class="on-ok">Yes</button><button data-val="no" class="on-bad">No</button><button data-val="na">N/A</button></div>
+    </div>
 
+    <div class="doc-item">
       <div class="q">Executive sign present</div>
       <div class="chip-toggle" id="docExecSign"><button data-val="yes" class="on-ok">Yes</button><button data-val="no" class="on-bad">No</button></div>
+    </div>
 
+    <div class="doc-item">
       <div class="q">Team sign present</div>
       <div class="chip-toggle" id="docTeamSign"><button data-val="yes" class="on-ok">Yes</button><button data-val="no" class="on-bad">No</button></div>
+    </div>
 
+    <div class="doc-item">
       <div class="q">Consumer sign present</div>
       <div class="chip-toggle" id="docConsumerSign"><button data-val="yes" class="on-ok">Yes</button><button data-val="no" class="on-bad">No</button></div>
+    </div>
 
+    <div class="doc-item">
       <div class="q">Consumer name mentioned</div>
       <div class="chip-toggle" id="docConsumerName"><button data-val="yes" class="on-ok">Yes</button><button data-val="no" class="on-bad">No</button></div>
-
-      <div class="q">If refused — OGRA refusal clause mentioned</div>
-      <div class="chip-toggle" id="docRefusalClause"><button data-val="yes" class="on-ok">Yes</button><button data-val="no" class="on-bad">No</button><button data-val="na">N/A</button></div>
-
-      <div class="q">Consumer wants inspection in his presence</div>
-      <div class="chip-toggle" id="docWantsPresence"><button data-val="yes" class="on-ok">Yes</button><button data-val="no" class="on-bad">No</button><button data-val="na">N/A</button></div>
     </div>
+
+    <div class="doc-item">
+      <div class="q">If the consumer's name and sign are not on the OGRA Form, does it mention that the consumer or consumer's representative refused to sign?</div>
+      <div class="chip-toggle" id="docRefusalClause"><button data-val="yes" class="on-ok">Yes</button><button data-val="no" class="on-bad">No</button></div>
+    </div>
+
+    <div class="doc-item">
+      <div class="q">OGRA Form — consumer status regarding inspection</div>
+      <div class="chip-toggle" id="docConsumerInspStatus" data-neutral="true">
+        <button data-val="with_presence">Wants Presence</button>
+        <button data-val="without_presence">Willing Without Presence</button>
+      </div>
+    </div>
+
     <label class="field-label">Remarks (optional)</label>
     <textarea id="remarks" rows="2" placeholder="Any additional notes for this meter…"></textarea>
   </div>
@@ -301,6 +320,11 @@
     <h2>Recent Entries</h2>
     <div class="subtext">Last 3 saved for this project. Full list &amp; export live on that project's card in the <b>Projects</b> tab.</div>
     <div id="recentMini" style="font-size:13px; color:var(--muted);">No entries yet.</div>
+  </div>
+
+  <div class="row" style="margin-bottom:20px;">
+    <button class="btn outline" onclick="resetForm(true)" style="flex:0 0 110px;">Clear</button>
+    <button class="btn amber" onclick="saveRecord()">💾 Save Entry</button>
   </div>
 
   </div>
@@ -371,11 +395,6 @@
 
 </main>
 
-<footer class="savebar" id="savebarInspect" style="display:none;">
-  <button class="btn outline" onclick="resetForm(true)" style="flex:0 0 90px;">Clear</button>
-  <button class="btn amber" onclick="saveRecord()">💾 Save Entry</button>
-</footer>
-
 <!-- New Project modal -->
 <div class="modal-backdrop" id="newProjectModal">
   <div class="modal-box">
@@ -419,21 +438,21 @@ const METER_TYPES = [
   {category:'G1.6', alias:'RE', variant:'Old', name:'Remus G1.6 old', indexSeals:'02 PC Seals', bodySeals:'01 Upper body,01 Front body,01 Back body'},
   {category:'G1.6', alias:'RE', variant:'New', name:'Remus G1.6 New', indexSeals:'02 PC Seals', bodySeals:'02 Upper body,03 Front body,03 Back body'},
   {category:'G1.6', alias:'ZA', variant:'', name:'Zenner-G1.6', indexSeals:'02 PC Seals', bodySeals:'02 Upper body,02 Front body,02 Back body'},
-  {category:'G1.6', alias:'DD', variant:'', name:'Dandong Dongfa G1.6', indexSeals:'02 PC Seals', bodySeals:'02 Upper body,02 Front body,02 Back body'},
+  {category:'G1.6', alias:'DD', variant:'Dongfa', name:'Dandong Dongfa G1.6', indexSeals:'02 PC Seals', bodySeals:'02 Upper body,02 Front body,02 Back body'},
   {category:'G1.6', alias:'CT', variant:'', name:'Chint-G1.6', indexSeals:'04 PC Seals', bodySeals:'02 Upper body,02 Front body,02 Back body'},
   {category:'G1.6', alias:'QM', variant:'', name:'Qianwei G-1.6', indexSeals:'02 PC Seals', bodySeals:'02 Body seals'},
-  {category:'G1.6', alias:'BK', variant:'', name:'Elster-G1.6', indexSeals:'02 PC Seals', bodySeals:'02 Body seals'},
-  {category:'G1.6', alias:'DIT', variant:'', name:'Dandong Iwatani Toyo G1.6A (unconfirmed — verify with team)', indexSeals:'02 PC Seals', bodySeals:'02 Body seals'},
-  {category:'G2.5', alias:'BK', variant:'', name:'Elster-G2.5', indexSeals:'02 PC Seals', bodySeals:'02 Body seals'},
+  {category:'G1.6', alias:'EL', variant:'', name:'Elster-G1.6', indexSeals:'02 PC Seals', bodySeals:'02 Body seals'},
+  {category:'G1.6', alias:'DD', variant:'Iwatani Toyo', name:'Dandong Iwatani Toyo G1.6A', indexSeals:'02 PC Seals', bodySeals:'02 Body seals'},
+  {category:'G2.5', alias:'EL', variant:'', name:'Elster-G2.5', indexSeals:'02 PC Seals', bodySeals:'02 Body seals'},
   {category:'G4', alias:'GN', variant:'REP', name:'SSG-G4 REP', indexSeals:'02 PC Seals + 02 Rivet Seals', bodySeals:'01 Bit wire seal'},
   {category:'G4', alias:'GN', variant:'NEW', name:'SSG-G4 NEW', indexSeals:'02 PC Seals + 02 Rivet Seals', bodySeals:'02 Body seals'},
-  {category:'G4', alias:'BK', variant:'', name:'Elster-G4', indexSeals:'02 PC Seals', bodySeals:'02 Body seals'},
+  {category:'G4', alias:'EL', variant:'', name:'Elster-G4', indexSeals:'02 PC Seals', bodySeals:'02 Body seals'},
   {category:'G4', alias:'ZA', variant:'', name:'Zenner-G4', indexSeals:'02 PC Seals', bodySeals:'02 Body seals'},
   {category:'G4', alias:'CT', variant:'', name:'Chint-G4', indexSeals:'02 PC Seals', bodySeals:'05 Body seals'},
   {category:'G4', alias:'CU', variant:'', name:'Sensus-G4', indexSeals:'02 Special PC Seals', bodySeals:'02 Body seals'},
   {category:'G4', alias:'DS', variant:'', name:'Daesung-G4', indexSeals:'03 Seals', bodySeals:'02 Upper body,02 Front body,02 Back body'},
   {category:'G-6', alias:'CU', variant:'', name:'Sensus-G6', indexSeals:'02 Special PC Seals', bodySeals:'02 Body seals'},
-  {category:'G-6', alias:'BK', variant:'', name:'Elster-G6', indexSeals:'02 PC Seals', bodySeals:'02 Body seals'},
+  {category:'G-6', alias:'EL', variant:'', name:'Elster-G6', indexSeals:'02 PC Seals', bodySeals:'02 Body seals'},
 ];
 
 /* ============================================================
@@ -463,7 +482,6 @@ function showTab(name){
   document.getElementById('tabBtnInspect').classList.toggle('active', name==='inspect');
   document.getElementById('tabBtnProjects').classList.toggle('active', name==='projects');
   document.getElementById('tabBtnSettings').classList.toggle('active', name==='settings');
-  document.getElementById('savebarInspect').style.display = name==='inspect' ? 'flex' : 'none';
   if(name==='inspect') refreshInspectVisibility();
   window.scrollTo({top:0, behavior:'smooth'});
 }
@@ -748,17 +766,19 @@ function setSealStatus(kind, val, btnEl){
 function wireStaticToggles(){
   document.querySelectorAll('.chip-toggle').forEach(group=>{
     if(group.id==='idxSealStatus' || group.id==='bodySealStatus') return;
+    const isNeutral = group.hasAttribute('data-neutral');
     group.querySelectorAll('button').forEach(btn=>{
       btn.addEventListener('click', ()=>{
-        [...group.children].forEach(b=>b.classList.remove('on-ok','on-bad'));
+        [...group.children].forEach(b=>b.classList.remove('on-ok','on-bad','on-neutral'));
         const val = btn.getAttribute('data-val');
-        if(val==='ok'||val==='yes'||val==='clean') btn.classList.add('on-ok');
+        if(isNeutral) btn.classList.add('on-neutral');
+        else if(val==='ok'||val==='yes'||val==='clean') btn.classList.add('on-ok');
         else if(val==='na'){ }
         else btn.classList.add('on-bad');
         group.setAttribute('data-current', val);
       });
     });
-    const pre = group.querySelector('.on-ok');
+    const pre = group.querySelector('.on-ok, .on-neutral');
     if(pre) group.setAttribute('data-current', pre.getAttribute('data-val'));
   });
 }
@@ -993,7 +1013,7 @@ function summarizeDocs(){
     ['SealMatch', getToggleVal('docSealMatch')], ['DamageMentioned', getToggleVal('docDamageMentioned')],
     ['ExecSign', getToggleVal('docExecSign')], ['TeamSign', getToggleVal('docTeamSign')],
     ['ConsumerSign', getToggleVal('docConsumerSign')], ['ConsumerName', getToggleVal('docConsumerName')],
-    ['RefusalClause', getToggleVal('docRefusalClause')], ['WantsPresence', getToggleVal('docWantsPresence')],
+    ['RefusalClause', getToggleVal('docRefusalClause')], ['ConsumerInspStatus', getToggleVal('docConsumerInspStatus')],
   ];
   return parts.map(([k,v])=>`${k}:${v||'-'}`).join('; ');
 }
