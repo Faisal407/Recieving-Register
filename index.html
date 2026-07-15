@@ -24,7 +24,7 @@
   header.topbar{position:sticky; top:0; z-index:40; background:var(--steel); color:#fff; padding:14px 16px 12px; box-shadow:0 2px 10px rgba(0,0,0,.18);}
   header.topbar .row1{display:flex; align-items:center; justify-content:space-between; gap:10px;}
   header.topbar h1{font-size:22px; font-weight:700; line-height:1;}
-  header.topbar .tag{font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#b9cbd7; margin-top:2px;}
+  header.topbar .tag{font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:#b9cbd7; margin-top:2px;}
   .pill-btn{background:var(--amber); color:#241407; border:none; border-radius:999px; font-family:'Inter',sans-serif; font-weight:700; font-size:12.5px; padding:9px 14px; white-space:nowrap; cursor:pointer;}
   .pill-btn.secondary{background:transparent; color:#fff; border:1.5px solid rgba(255,255,255,.45);}
   .pill-btn:active{transform:scale(.97);}
@@ -56,6 +56,7 @@
   .btn{display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:11px 14px; border-radius:9px; border:1.5px solid var(--steel); background:var(--steel); color:#fff; font-weight:600; font-size:14px; cursor:pointer; width:100%; margin-top:8px;}
   .btn.outline{background:#fff; color:var(--steel);}
   .btn.amber{background:var(--amber); border-color:var(--amber); color:#241407;}
+  .btn.small{padding:8px 10px; font-size:12.5px; margin-top:0;}
   .btn:active{transform:scale(.985);}
   .btn:disabled{opacity:.45; cursor:not-allowed;}
 
@@ -124,66 +125,74 @@
   .banner b{color:#5c3608;}
   .banner.info{background:#eaf1f6; border-color:#b9cbd7; color:#274252;}
   .banner.info b{color:#122431;}
+  .banner.block{background:#fde3e0; border-color:#f0aca0; color:#7a1d10; text-align:center; padding:22px 16px;}
 
-  .code-box{display:flex; align-items:center; justify-content:space-between; background:var(--paper); border:1.5px dashed var(--steel-light); border-radius:9px; padding:10px 12px; margin-top:10px;}
-  .code-box .code{font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:18px; color:var(--steel);}
+  .project-card{background:var(--card); border:1.5px solid var(--line); border-radius:14px; padding:14px; margin-bottom:12px;}
+  .project-card.active{border-color:var(--amber); box-shadow:0 0 0 2px rgba(201,130,42,.18);}
+  .pc-head{display:flex; justify-content:space-between; align-items:flex-start; gap:10px;}
+  .pc-name{font-family:'Barlow Condensed',sans-serif; font-size:19px; font-weight:700; color:var(--steel);}
+  .pc-meta{font-size:11.5px; color:var(--muted); margin-top:2px;}
+  .pc-badge{display:inline-block; font-size:10.5px; font-weight:700; padding:2px 8px; border-radius:999px; margin-top:5px;}
+  .pc-badge.on{background:#dcefe2; color:var(--ok);}
+  .pc-badge.off{background:#eee; color:var(--muted);}
+  .pc-cloud{background:var(--paper); border-radius:9px; padding:10px; margin-top:10px;}
+  .pc-cloud label.field-label{margin:8px 0 4px;}
+  .pc-actions{display:flex; gap:8px; margin-top:10px;}
+  .pc-actions .btn{margin-top:0;}
 </style>
 </head>
 <body>
-
-<div class="modal-backdrop open" id="projectSetupModal">
-  <div class="modal-box">
-    <h3>Start Inspection Session</h3>
-    <div class="subtext">Every record in this session will be tagged with these two fields.</div>
-    <label class="field-label">Project Name</label>
-    <input type="text" id="projName" placeholder="e.g. DMIS Receiving — Batch 14">
-    <label class="field-label">Device Name</label>
-    <input type="text" id="deviceName" placeholder="e.g. Inspector-1 Phone">
-    <button class="btn amber" onclick="startProject()">Start Inspection Session</button>
-
-    <div class="banner info" style="margin-top:14px;">
-      <b>About multi-device sharing &amp; auto cloud export:</b> this offline test page can't sync live between
-      phones or auto-create a Google Sheet / OneDrive file by itself — that needs a real backend with account sign-in
-      (Google/Microsoft OAuth), which is a Phase-2 build, not something a static page can safely do.
-      For now: give every device <b>the same Project Name</b>, each device exports its own Excel tagged with its
-      Device Name, and the files get merged. This also generates a shareable Project Code below to help keep them lined up.
-    </div>
-  </div>
-</div>
 
 <header class="topbar">
   <div class="row1">
     <div>
       <h1>DMIS Receiving Inspection</h1>
-      <div class="tag" id="projTag">Field test prototype · SNGPL Faisalabad-D</div>
+      <div class="tag" id="projTag">No project open · SNGPL Faisalabad-D</div>
     </div>
-    <button class="pill-btn secondary" onclick="showTab('records')">All Records (<span id="recCount">0</span>)</button>
   </div>
   <div class="main-tabs">
-    <button class="main-tab active" id="tabBtnInspect" onclick="showTab('inspect')">📋 Inspection</button>
-    <button class="main-tab" id="tabBtnRecords" onclick="showTab('records')">🗂 All Records</button>
+    <button class="main-tab" id="tabBtnInspect" onclick="showTab('inspect')">📋 Inspection</button>
+    <button class="main-tab active" id="tabBtnProjects" onclick="showTab('projects')">🗂 Projects</button>
+    <button class="main-tab" id="tabBtnSettings" onclick="showTab('settings')">⚙ Settings</button>
   </div>
 </header>
 
 <main>
 
-<div id="tabInspect">
-
+<!-- ============ PROJECTS TAB ============ -->
+<div id="tabProjects">
   <div class="banner">
-    <b>Field test build.</b> Data lives only in this browser tab — it is <b>not</b> saved automatically.
-    Export from the <b>All Records</b> tab after each batch so nothing is lost if the page closes.
+    <b>Field test build.</b> Data lives only in this browser tab. Create a project, optionally link a Google Sheet,
+    then Open it to start inspecting. Export Excel from each project card as your reliable backup regardless of cloud sync.
   </div>
+  <button class="btn amber" onclick="openNewProjectModal()">➕ New Project</button>
+  <div id="projectList" style="margin-top:14px;">
+    <div class="subtext">No projects yet — create one above to get started.</div>
+  </div>
+</div>
+
+<!-- ============ INSPECTION TAB ============ -->
+<div id="tabInspect" style="display:none;">
+
+  <div id="noProjectBlock" class="banner block" style="display:none;">
+    <b>No project open.</b><br>Go to the <b>Projects</b> tab to create or open one before starting an inspection.
+    <br><button class="btn amber" style="margin-top:10px;" onclick="showTab('projects')">Go to Projects</button>
+  </div>
+
+  <div id="inspectContent" style="display:none;">
 
   <div class="card">
     <h2><span class="num">0</span> Dispatcher List (optional)</h2>
-    <div class="subtext">Upload the dispatcher's Excel/CSV of expected meter numbers, so each scan is checked against it automatically.</div>
+    <div class="subtext">Upload the dispatcher's Excel/CSV of expected meter numbers for <b id="dispatcherProjName">this project</b>.
+      If a Google Sheet is linked, this also auto-uploads to <b>Sheet2</b> of that sheet.</div>
     <input type="file" id="dispatcherFile" accept=".csv,.xlsx,.xls">
     <div id="dispatcherStatus" class="subtext" style="margin-top:8px;"></div>
   </div>
 
   <div class="card" id="section-1">
     <h2><span class="num">1</span> Meter Identity</h2>
-    <div class="subtext">Scan the meter's barcode — this also auto-captures the reading from the same frame. Type manually if the barcode won't read.</div>
+    <div class="subtext">Scan the meter's barcode — this also auto-captures the reading from the same frame. Type manually if the barcode won't read.
+      Either way, the meter gets recorded — this just tells you whether it matched the dispatcher list.</div>
     <div class="row">
       <button class="btn amber" onclick="openScanner()">📷 Scan Barcode (+ auto-capture reading)</button>
     </div>
@@ -290,41 +299,100 @@
 
   <div class="card">
     <h2>Recent Entries</h2>
-    <div class="subtext">Last 3 saved this session. Full list is under the <b>All Records</b> tab.</div>
+    <div class="subtext">Last 3 saved for this project. Full list &amp; export live on that project's card in the <b>Projects</b> tab.</div>
     <div id="recentMini" style="font-size:13px; color:var(--muted);">No entries yet.</div>
   </div>
 
+  </div>
 </div>
 
-<div id="tabRecords" style="display:none;">
+<!-- ============ SETTINGS TAB ============ -->
+<div id="tabSettings" style="display:none;">
   <div class="card">
-    <h2>All Recorded Entries</h2>
-    <div class="subtext" id="recordsMeta">0 records this session.</div>
-    <div class="row">
-      <button class="btn amber" onclick="exportExcel()">⬇ Export Excel</button>
-      <button class="btn outline" onclick="openCloudInfo()">☁ Auto-create Google Sheet / OneDrive</button>
+    <h2>☁ Cloud Sync — Apps Script Setup</h2>
+    <div class="subtext">
+      One-time setup, reusable for every project. Uses a free Google Apps Script Web App — no OAuth login needed
+      in this page, since the script runs under your own Google account's authorization once deployed. Each
+      project links its own Sheet ID + Web App URL from its card in the Projects tab.
     </div>
-    <div class="table-wrap" style="margin-top:12px;">
-      <table class="records">
-        <thead>
-          <tr><th>Sr#</th><th>Meter No.</th><th>Meter Type</th><th>Reading</th><th>Physical Condition</th><th>Documents Status</th><th>Device</th><th></th></tr>
-        </thead>
-        <tbody id="recordsBody"></tbody>
-      </table>
+    <p style="font-size:13.5px; line-height:1.55;">
+      <b>1.</b> Open (or create) the Google Sheet for a project.<br>
+      <b>2.</b> Extensions → Apps Script.<br>
+      <b>3.</b> Delete any starter code, paste the script below.<br>
+      <b>4.</b> Replace <code>PASTE_YOUR_SHEET_ID_HERE</code> with that Sheet's ID (from its URL, between
+      <code>/d/</code> and <code>/edit</code>).<br>
+      <b>5.</b> Deploy → New deployment → Type: <b>Web app</b> → Execute as: <b>Me</b> → Who has access: <b>Anyone</b>.<br>
+      <b>6.</b> Copy the URL (ends in <code>/exec</code>) into that project's card on the Projects tab.
+    </p>
+    <textarea readonly rows="20" class="mono" style="font-size:11px; white-space:pre;" id="appsScriptCodeBox">function doPost(e) {
+  var SHEET_ID = 'PASTE_YOUR_SHEET_ID_HERE';
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var data = JSON.parse(e.postData.contents);
+
+  if (data.action === 'dispatcherList') {
+    var sheet2 = ss.getSheetByName('Sheet2');
+    if (!sheet2) sheet2 = ss.insertSheet('Sheet2');
+    sheet2.clearContents();
+    sheet2.appendRow(['Meter No (Dispatcher List)']);
+    data.meters.forEach(function(m){ sheet2.appendRow([m]); });
+    return ContentService.createTextOutput(JSON.stringify({status:'ok'}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  var sheet = ss.getSheetByName('DMIS Receiving');
+  if (!sheet) {
+    sheet = ss.insertSheet('DMIS Receiving');
+    sheet.appendRow(['Timestamp','Sr No','Meter No','Meter Type','Meter Reading',
+      'Physical Condition','Documents Status','Dispatcher Match','Project','Device','Remarks']);
+  }
+  sheet.appendRow([
+    new Date(), data.sr, data.meterNo, data.meterType, data.reading,
+    data.physicalCondition, data.documentsStatus, data.dispatcherMatch,
+    data.project, data.device, data.remarks
+  ]);
+  return ContentService.createTextOutput(JSON.stringify({status:'ok'}))
+    .setMimeType(ContentService.MimeType.JSON);
+}</textarea>
+    <button class="btn outline" onclick="copyAppsScriptCode()">📋 Copy Code</button>
+    <div class="banner info" style="margin-top:12px;">
+      <b>Known limitation:</b> the browser can't read the script's response (Apps Script doesn't send CORS
+      headers), so this page can't confirm each row landed — it marks "Sent (unconfirmed)". Keep exporting
+      Excel per project as your reliable backup. <b>OneDrive auto-export</b> has no equivalent no-login trick —
+      that genuinely needs the Phase-2 backend with Microsoft sign-in.
     </div>
+  </div>
+
+  <div class="card">
+    <h2>Session</h2>
+    <div class="subtext">Everything below lives only in this browser tab.</div>
+    <button class="btn outline" onclick="clearAllData()">🗑 Clear All Projects &amp; Records</button>
   </div>
 </div>
 
 </main>
 
-<footer class="savebar" id="savebarInspect">
+<footer class="savebar" id="savebarInspect" style="display:none;">
   <button class="btn outline" onclick="resetForm(true)" style="flex:0 0 90px;">Clear</button>
   <button class="btn amber" onclick="saveRecord()">💾 Save Entry</button>
 </footer>
-<footer class="savebar" id="savebarRecords" style="display:none;">
-  <button class="btn outline" onclick="showTab('inspect')" style="flex:0 0 110px;">← New Entry</button>
-  <button class="btn amber" onclick="exportExcel()">⬇ Export Excel</button>
-</footer>
+
+<!-- New Project modal -->
+<div class="modal-backdrop" id="newProjectModal">
+  <div class="modal-box">
+    <h3>New Project</h3>
+    <label class="field-label">Project Name</label>
+    <input type="text" id="npName" placeholder="e.g. DMIS Receiving — Batch 14">
+    <label class="field-label">Device Name</label>
+    <input type="text" id="npDevice" placeholder="e.g. Inspector-1 Phone">
+    <label class="field-label">Google Sheet ID (optional — link later if unsure)</label>
+    <input type="text" id="npSheetId" placeholder="From the Sheet's URL, e.g. 1AbC...xyz">
+    <label class="field-label">Apps Script Web App URL (optional)</label>
+    <input type="text" id="npScriptUrl" placeholder="https://script.google.com/macros/s/…/exec">
+    <div class="subtext" style="margin-top:8px;">See the <b>Settings</b> tab for how to get these two values.</div>
+    <button class="btn amber" onclick="createProject()">Create Project</button>
+    <button class="btn outline" onclick="closeNewProjectModal()">Cancel</button>
+  </div>
+</div>
 
 <div class="modal-backdrop" id="scannerModal">
   <div class="modal-box">
@@ -343,26 +411,6 @@
       <button class="btn amber" onclick="capturePhoto()">Capture</button>
       <button class="btn outline" onclick="closeCamera()">Cancel</button>
     </div>
-  </div>
-</div>
-
-<div class="modal-backdrop" id="cloudInfoModal">
-  <div class="modal-box">
-    <h3>Auto-create Google Sheet / OneDrive</h3>
-    <div class="subtext">This is not something a static offline page can do safely, and here's exactly why:</div>
-    <p style="font-size:13.5px; line-height:1.5;">
-      Creating a file directly in your Google Drive or OneDrive requires the page to sign in as <b>you</b>
-      via Google/Microsoft's official login (OAuth) and hold a server-side app registration — that's account
-      infrastructure, not something to embed in a client-side test page. Doing it insecurely (e.g. hardcoding
-      access) would risk your account credentials.
-    </p>
-    <p style="font-size:13.5px; line-height:1.5;">
-      <b>What this prototype does instead:</b> Export Excel downloads a real .xlsx you can upload to Drive/OneDrive
-      manually in a few seconds.<br><b>What the real app will do:</b> once we build the Flutter app, it'll use a
-      proper Google Sheets API service account (or Microsoft Graph for OneDrive) to push each record automatically —
-      that's a backend feature for the next build phase, not this test page.
-    </p>
-    <button class="btn amber" onclick="closeCloudInfo()">Got it</button>
   </div>
 </div>
 
@@ -388,9 +436,13 @@ const METER_TYPES = [
   {category:'G-6', alias:'BK', variant:'', name:'Elster-G6', indexSeals:'02 PC Seals', bodySeals:'02 Body seals'},
 ];
 
-let dispatcherSet = new Set();
-let records = [];
-let srCounter = 1;
+/* ============================================================
+   MULTI-PROJECT DATA MODEL
+   ============================================================ */
+let projects = [];        // {id,name,device,sheetId,appsScriptUrl,records:[],dispatcherSet:Set,srCounter:1,createdAt}
+let activeProjectId = null;
+function getActiveProject(){ return projects.find(p=>p.id===activeProjectId) || null; }
+
 let currentCameraMode = null;
 let cameraStream = null;
 let readingPhotoData = null;
@@ -401,31 +453,161 @@ let scannerGotDecode = false;
 let selectedCategory='', selectedAlias='', selectedVariant='', aliasIsManual=false;
 let sealSummary = { index:{status:'intact', total:0, found:''}, body:{status:'intact', total:0, found:''} };
 
-let projectName='', deviceName='', projectCode='';
-
-function genCode(){
-  return Math.random().toString(36).slice(2,6).toUpperCase() + '-' + Math.floor(1000+Math.random()*9000);
-}
-function startProject(){
-  const p = document.getElementById('projName').value.trim();
-  const d = document.getElementById('deviceName').value.trim();
-  if(!p || !d){ alert('Please enter both Project Name and Device Name.'); return; }
-  projectName = p; deviceName = d; projectCode = genCode();
-  document.getElementById('projTag').textContent = `${projectName} · ${deviceName} · Code ${projectCode}`;
-  document.getElementById('projectSetupModal').classList.remove('open');
-}
-
+/* ============================================================
+   TABS
+   ============================================================ */
 function showTab(name){
-  const isInspect = name==='inspect';
-  document.getElementById('tabInspect').style.display = isInspect ? 'block' : 'none';
-  document.getElementById('tabRecords').style.display = isInspect ? 'none' : 'block';
-  document.getElementById('tabBtnInspect').classList.toggle('active', isInspect);
-  document.getElementById('tabBtnRecords').classList.toggle('active', !isInspect);
-  document.getElementById('savebarInspect').style.display = isInspect ? 'flex' : 'none';
-  document.getElementById('savebarRecords').style.display = isInspect ? 'none' : 'flex';
+  document.getElementById('tabInspect').style.display = name==='inspect' ? 'block' : 'none';
+  document.getElementById('tabProjects').style.display = name==='projects' ? 'block' : 'none';
+  document.getElementById('tabSettings').style.display = name==='settings' ? 'block' : 'none';
+  document.getElementById('tabBtnInspect').classList.toggle('active', name==='inspect');
+  document.getElementById('tabBtnProjects').classList.toggle('active', name==='projects');
+  document.getElementById('tabBtnSettings').classList.toggle('active', name==='settings');
+  document.getElementById('savebarInspect').style.display = name==='inspect' ? 'flex' : 'none';
+  if(name==='inspect') refreshInspectVisibility();
   window.scrollTo({top:0, behavior:'smooth'});
 }
+function refreshInspectVisibility(){
+  const has = !!getActiveProject();
+  document.getElementById('noProjectBlock').style.display = has ? 'none' : 'block';
+  document.getElementById('inspectContent').style.display = has ? 'block' : 'none';
+}
 
+/* ============================================================
+   PROJECTS
+   ============================================================ */
+function openNewProjectModal(){ document.getElementById('newProjectModal').classList.add('open'); }
+function closeNewProjectModal(){
+  document.getElementById('newProjectModal').classList.remove('open');
+  ['npName','npDevice','npSheetId','npScriptUrl'].forEach(id=>document.getElementById(id).value='');
+}
+function createProject(){
+  const name = document.getElementById('npName').value.trim();
+  const device = document.getElementById('npDevice').value.trim();
+  const sheetId = document.getElementById('npSheetId').value.trim();
+  const appsScriptUrl = document.getElementById('npScriptUrl').value.trim();
+  if(!name || !device){ alert('Please enter both Project Name and Device Name.'); return; }
+  const proj = {
+    id: 'p_' + Date.now() + Math.floor(Math.random()*1000),
+    name, device, sheetId, appsScriptUrl,
+    records: [], dispatcherSet: new Set(), srCounter: 1,
+    createdAt: new Date().toLocaleString(),
+  };
+  projects.push(proj);
+  closeNewProjectModal();
+  renderProjectList();
+}
+function openProject(id){
+  activeProjectId = id;
+  const p = getActiveProject();
+  document.getElementById('projTag').textContent = `${p.name} · ${p.device}${p.appsScriptUrl ? ' · Cloud Sync ON' : ''}`;
+  resetForm(true);
+  renderSealChecklist(null);
+  document.getElementById('dispatcherProjName').textContent = p.name;
+  document.getElementById('dispatcherStatus').textContent = p.dispatcherSet.size
+    ? `${p.dispatcherSet.size} meter numbers loaded for this project.` : '';
+  renderRecentMini();
+  showTab('inspect');
+}
+function saveProjectCloudSettings(id){
+  const p = projects.find(x=>x.id===id);
+  p.sheetId = document.getElementById('pcSheetId-'+id).value.trim();
+  p.appsScriptUrl = document.getElementById('pcScriptUrl-'+id).value.trim();
+  renderProjectList();
+  if(activeProjectId===id){
+    document.getElementById('projTag').textContent = `${p.name} · ${p.device}${p.appsScriptUrl ? ' · Cloud Sync ON' : ''}`;
+  }
+}
+function testProjectCloudSync(id){
+  const p = projects.find(x=>x.id===id);
+  if(!p.appsScriptUrl){ alert('Paste the Apps Script Web App URL for this project first.'); return; }
+  const statusEl = document.getElementById('pcStatus-'+id);
+  statusEl.textContent = 'Sending test row…';
+  const testRow = { sr:'TEST', meterNo:'TEST-CONNECTION', meterType:'-', reading:'-', physicalCondition:'-',
+    documentsStatus:'-', dispatcherMatch:'-', project:p.name, device:p.device, remarks:'Connection test row' };
+  fetch(p.appsScriptUrl, { method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify(testRow) })
+    .then(()=>{ statusEl.textContent = 'Test row sent — open the Google Sheet to confirm (response can\'t be read from here).'; })
+    .catch(()=>{ statusEl.textContent = 'Could not reach the URL — check it and the deployment access setting.'; });
+}
+function toggleProjectRecords(id){
+  const el = document.getElementById('pcRecords-'+id);
+  el.style.display = (el.style.display==='none' || !el.style.display) ? 'block' : 'none';
+}
+function deleteProject(id){
+  if(!confirm('Delete this project and all its records? This cannot be undone.')) return;
+  projects = projects.filter(p=>p.id!==id);
+  if(activeProjectId===id){ activeProjectId=null; document.getElementById('projTag').textContent='No project open · SNGPL Faisalabad-D'; }
+  renderProjectList();
+}
+function deleteProjectRecord(projId, sr){
+  const p = projects.find(x=>x.id===projId);
+  p.records = p.records.filter(r=>r.sr!==sr);
+  renderProjectList();
+  if(activeProjectId===projId) renderRecentMini();
+}
+function clearAllData(){
+  if(!confirm('This deletes every project and record in this session. Continue?')) return;
+  projects = []; activeProjectId = null;
+  document.getElementById('projTag').textContent = 'No project open · SNGPL Faisalabad-D';
+  renderProjectList();
+  showTab('projects');
+}
+
+function renderProjectList(){
+  const wrap = document.getElementById('projectList');
+  if(projects.length===0){ wrap.innerHTML = '<div class="subtext">No projects yet — create one above to get started.</div>'; return; }
+  wrap.innerHTML = projects.map(p=>{
+    const cloudOn = !!p.appsScriptUrl;
+    const recordsTableRows = p.records.map(r=>`
+      <tr>
+        <td>${r.sr}</td><td>${r.meterNo}</td><td>${r.meterType}</td><td>${r.reading}</td>
+        <td>${r.physicalCondition}</td><td>${r.documentsStatus}</td><td>${r.cloudStatus||'-'}</td>
+        <td><button class="pill-btn secondary" style="color:var(--warn); border-color:var(--warn); padding:4px 8px;" onclick="deleteProjectRecord('${p.id}',${r.sr})">✕</button></td>
+      </tr>`).join('');
+    return `
+    <div class="project-card ${p.id===activeProjectId ? 'active' : ''}">
+      <div class="pc-head">
+        <div>
+          <div class="pc-name">${p.name}</div>
+          <div class="pc-meta">${p.device} · Created ${p.createdAt} · ${p.records.length} record(s)</div>
+          <span class="pc-badge ${cloudOn ? 'on' : 'off'}">${cloudOn ? '☁ Cloud Sync ON' : '☁ Cloud Sync not linked'}</span>
+        </div>
+        <button class="pill-btn" onclick="openProject('${p.id}')">Open</button>
+      </div>
+
+      <div class="pc-cloud">
+        <label class="field-label">Google Sheet ID</label>
+        <input type="text" id="pcSheetId-${p.id}" value="${p.sheetId||''}" placeholder="Sheet ID from its URL">
+        <label class="field-label">Apps Script Web App URL</label>
+        <input type="text" id="pcScriptUrl-${p.id}" value="${p.appsScriptUrl||''}" placeholder="https://script.google.com/macros/s/…/exec">
+        <div class="row" style="margin-top:8px;">
+          <button class="btn outline small" onclick="testProjectCloudSync('${p.id}')">Test</button>
+          <button class="btn amber small" onclick="saveProjectCloudSettings('${p.id}')">Save</button>
+        </div>
+        <div class="ocr-status" id="pcStatus-${p.id}"></div>
+      </div>
+
+      <div class="pc-actions">
+        <button class="btn outline small" onclick="toggleProjectRecords('${p.id}')" style="flex:1;">View Records (${p.records.length})</button>
+        <button class="btn outline small" onclick="exportProjectExcel('${p.id}')" style="flex:1;">⬇ Export</button>
+        <button class="btn outline small" style="flex:0 0 44px; color:var(--warn); border-color:var(--warn);" onclick="deleteProject('${p.id}')">🗑</button>
+      </div>
+
+      <div id="pcRecords-${p.id}" style="display:none; margin-top:10px;">
+        <div class="table-wrap">
+          <table class="records">
+            <thead><tr><th>Sr#</th><th>Meter No.</th><th>Meter Type</th><th>Reading</th><th>Condition</th><th>Documents</th><th>Cloud</th><th></th></tr></thead>
+            <tbody>${recordsTableRows || '<tr><td colspan="8" style="color:var(--muted);">No records yet.</td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ============================================================
+   BEEP / FIELD HIGHLIGHT HELPERS
+   ============================================================ */
 function playBeep(freq, duration){
   try{
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -439,30 +621,16 @@ function playBeep(freq, duration){
     osc.stop(ctx.currentTime + (duration||180)/1000);
   }catch(e){ }
 }
+function flagFieldNeeded(id){ const el=document.getElementById(id); if(!el) return; el.classList.remove('field-ok'); el.classList.add('field-blink'); }
+function flagFieldOk(id){ const el=document.getElementById(id); if(!el) return; el.classList.remove('field-blink'); el.classList.add('field-ok'); }
+function clearFieldFlags(id){ const el=document.getElementById(id); if(!el) return; el.classList.remove('field-blink','field-ok'); }
 
-function flagFieldNeeded(id){
-  const el = document.getElementById(id);
-  if(!el) return;
-  el.classList.remove('field-ok');
-  el.classList.add('field-blink');
-}
-function flagFieldOk(id){
-  const el = document.getElementById(id);
-  if(!el) return;
-  el.classList.remove('field-blink');
-  el.classList.add('field-ok');
-}
-function clearFieldFlags(id){
-  const el = document.getElementById(id);
-  if(!el) return;
-  el.classList.remove('field-blink','field-ok');
-}
-
+/* ============================================================
+   CLASSIFICATION (chip-based)
+   ============================================================ */
 function initCategories(){
   const cats = [...new Set(METER_TYPES.map(m=>m.category))];
-  document.getElementById('categoryChips').innerHTML = cats.map(c=>
-    `<button type="button" onclick="selectCategory('${c}')">${c}</button>`
-  ).join('');
+  document.getElementById('categoryChips').innerHTML = cats.map(c=>`<button type="button" onclick="selectCategory('${c}')">${c}</button>`).join('');
 }
 initCategories();
 
@@ -473,14 +641,11 @@ function selectCategory(cat){
   document.getElementById('aliasManualWrap').style.display = 'none';
   document.getElementById('aliasManual').value = '';
   document.getElementById('variantWrap').style.display = 'none';
-
   const aliases = [...new Set(METER_TYPES.filter(m=>m.category===cat).map(m=>m.alias))];
-  document.getElementById('aliasChips').innerHTML = aliases.map(a=>
-    `<button type="button" onclick="selectAlias('${a}')">${a}</button>`
-  ).join('') + `<button type="button" class="manual-chip" onclick="selectAlias('__manual__')">✎ Not in list — type manually</button>`;
+  document.getElementById('aliasChips').innerHTML = aliases.map(a=>`<button type="button" onclick="selectAlias('${a}')">${a}</button>`).join('') +
+    `<button type="button" class="manual-chip" onclick="selectAlias('__manual__')">✎ Not in list — type manually</button>`;
   renderSealChecklist(null);
 }
-
 function selectAlias(alias){
   selectedAlias = alias; selectedVariant = '';
   document.querySelectorAll('#aliasChips button').forEach(b=>{
@@ -500,25 +665,24 @@ function selectAlias(alias){
   const matches = METER_TYPES.filter(m=>m.category===selectedCategory && m.alias===alias);
   if(matches.length > 1){
     variantWrap.style.display='block';
-    document.getElementById('variantChips').innerHTML = matches.map(m=>
-      `<button type="button" onclick="selectVariant('${m.variant}')">${m.variant || '(default)'} — ${m.name}</button>`
-    ).join('');
+    document.getElementById('variantChips').innerHTML = matches.map(m=>`<button type="button" onclick="selectVariant('${m.variant}')">${m.variant || '(default)'} — ${m.name}</button>`).join('');
     selectVariant(matches[0].variant);
   } else {
     variantWrap.style.display='none';
     renderSealChecklist(matches[0] || null);
   }
 }
-
 function selectVariant(variant){
   selectedVariant = variant;
   document.querySelectorAll('#variantChips button').forEach(b=>b.classList.toggle('selected', b.textContent.startsWith((variant||'(default)'))));
   const m = METER_TYPES.find(x=>x.category===selectedCategory && x.alias===selectedAlias && x.variant===variant);
   renderSealChecklist(m);
 }
-
 function onAliasManualInput(){ }
 
+/* ============================================================
+   SEAL STATUS
+   ============================================================ */
 function parseSealGroup(str){
   const m = str.trim().match(/^(\d+)\s+(.*)$/);
   if(m) return {count: parseInt(m[1],10), label:m[2]};
@@ -530,11 +694,9 @@ function sumSeals(str){
   str.split(/[+,]/).forEach(s=>{ total += parseSealGroup(s).count; });
   return total;
 }
-
 function renderSealChecklist(meterType, isManual){
   const wrap = document.getElementById('sealChecklist');
   sealSummary = { index:{status:'intact', total:0, found:''}, body:{status:'intact', total:0, found:''} };
-
   if(isManual){
     wrap.innerHTML = '<div style="color:var(--muted); font-size:13px;">Make/model entered manually — no reference seal count on file. Note seal count and status in Remarks (Step 5).</div>';
     return;
@@ -543,10 +705,8 @@ function renderSealChecklist(meterType, isManual){
     wrap.innerHTML = '<div style="color:var(--muted); font-size:13px;">Select category &amp; make in Step 2 to load seal totals.</div>';
     return;
   }
-
   sealSummary.index.total = sumSeals(meterType.indexSeals);
   sealSummary.body.total = sumSeals(meterType.bodySeals);
-
   wrap.innerHTML = `
     <div class="seal-block">
       <div class="cond-row">
@@ -559,8 +719,7 @@ function renderSealChecklist(meterType, isManual){
       <div class="seal-total">Total on record: <b>${sealSummary.index.total}</b> (${meterType.indexSeals})</div>
       <div class="seal-found-wrap" id="indexFoundWrap" style="display:none;">
         <label class="field-label" style="margin-top:6px;">Seals Found / Total</label>
-        <input type="number" id="idxFound" inputmode="numeric" pattern="[0-9]*" min="0" max="${sealSummary.index.total}"
-          placeholder="0" oninput="sealSummary.index.found=this.value">
+        <input type="number" id="idxFound" inputmode="numeric" pattern="[0-9]*" min="0" max="${sealSummary.index.total}" placeholder="0" oninput="sealSummary.index.found=this.value">
       </div>
     </div>
     <div class="seal-block">
@@ -574,20 +733,16 @@ function renderSealChecklist(meterType, isManual){
       <div class="seal-total">Total on record: <b>${sealSummary.body.total}</b> (${meterType.bodySeals})</div>
       <div class="seal-found-wrap" id="bodyFoundWrap" style="display:none;">
         <label class="field-label" style="margin-top:6px;">Seals Found / Total</label>
-        <input type="number" id="bodyFound" inputmode="numeric" pattern="[0-9]*" min="0" max="${sealSummary.body.total}"
-          placeholder="0" oninput="sealSummary.body.found=this.value">
+        <input type="number" id="bodyFound" inputmode="numeric" pattern="[0-9]*" min="0" max="${sealSummary.body.total}" placeholder="0" oninput="sealSummary.body.found=this.value">
       </div>
-    </div>
-  `;
+    </div>`;
 }
-
 function setSealStatus(kind, val, btnEl){
   const group = btnEl.parentElement;
   [...group.children].forEach(b=>b.classList.remove('on-ok','on-bad'));
   if(val==='intact') btnEl.classList.add('on-ok'); else btnEl.classList.add('on-bad');
   sealSummary[kind].status = val;
-  const foundWrap = document.getElementById(kind==='index' ? 'indexFoundWrap' : 'bodyFoundWrap');
-  foundWrap.style.display = (val==='missing') ? 'block' : 'none';
+  document.getElementById(kind==='index' ? 'indexFoundWrap' : 'bodyFoundWrap').style.display = (val==='missing') ? 'block' : 'none';
 }
 
 function wireStaticToggles(){
@@ -608,52 +763,66 @@ function wireStaticToggles(){
   });
 }
 wireStaticToggles();
-function getToggleVal(id){
-  const g = document.getElementById(id);
-  return g ? (g.getAttribute('data-current') || '') : '';
-}
+function getToggleVal(id){ const g=document.getElementById(id); return g ? (g.getAttribute('data-current')||'') : ''; }
 
+/* ============================================================
+   DISPATCHER LIST — per project, auto-syncs to Sheet2
+   ============================================================ */
 document.getElementById('dispatcherFile').addEventListener('change', function(e){
+  const p = getActiveProject();
+  if(!p){ alert('Open a project first.'); return; }
   const file = e.target.files[0];
   if(!file) return;
   const statusEl = document.getElementById('dispatcherStatus');
   const ext = file.name.split('.').pop().toLowerCase();
   if(ext === 'csv'){
-    Papa.parse(file, {header:true, skipEmptyLines:true, complete: res=>{
-      loadDispatcherRows(res.data);
-      statusEl.textContent = `Loaded ${dispatcherSet.size} meter numbers from ${file.name}`;
-    }});
+    Papa.parse(file, {header:true, skipEmptyLines:true, complete: res=>loadDispatcherRows(p, res.data, file.name, statusEl)});
   } else {
     const reader = new FileReader();
     reader.onload = evt=>{
       const wb = XLSX.read(evt.target.result, {type:'array'});
       const sheet = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(sheet);
-      loadDispatcherRows(rows);
-      statusEl.textContent = `Loaded ${dispatcherSet.size} meter numbers from ${file.name}`;
+      loadDispatcherRows(p, rows, file.name, statusEl);
     };
     reader.readAsArrayBuffer(file);
   }
 });
-function loadDispatcherRows(rows){
-  dispatcherSet = new Set();
+function loadDispatcherRows(p, rows, fileName, statusEl){
+  p.dispatcherSet = new Set();
   rows.forEach(r=>{
     let val = null;
     for(const k in r){ if(/meter/i.test(k)){ val = r[k]; break; } }
     if(val===null){ const keys=Object.keys(r); if(keys.length) val = r[keys[0]]; }
-    if(val!==null && val!==undefined && String(val).trim()!==''){ dispatcherSet.add(String(val).trim().toUpperCase()); }
+    if(val!==null && val!==undefined && String(val).trim()!==''){ p.dispatcherSet.add(String(val).trim().toUpperCase()); }
   });
+  statusEl.textContent = `Loaded ${p.dispatcherSet.size} meter numbers from ${fileName}.`;
   checkDispatcherMatch();
+  if(p.appsScriptUrl){
+    statusEl.textContent += ' Uploading to Sheet2…';
+    fetch(p.appsScriptUrl, {
+      method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({ action:'dispatcherList', meters:[...p.dispatcherSet] })
+    }).then(()=>{ statusEl.textContent = `Loaded ${p.dispatcherSet.size} meter numbers — sent to Sheet2 (unconfirmed — check the sheet).`; })
+      .catch(()=>{ statusEl.textContent = `Loaded ${p.dispatcherSet.size} meter numbers locally — Sheet2 upload failed, check the URL.`; });
+  } else {
+    statusEl.textContent += ' No Sheet linked for this project — stored locally only.';
+  }
+  renderProjectList();
 }
 function checkDispatcherMatch(){
+  const p = getActiveProject();
   const val = document.getElementById('meterNo').value.trim().toUpperCase();
   const badge = document.getElementById('matchBadge');
-  if(!val){ badge.innerHTML=''; return; }
-  if(dispatcherSet.size===0){ badge.innerHTML = `<span class="match-badge match-none">No dispatcher list loaded</span>`; return; }
-  if(dispatcherSet.has(val)) badge.innerHTML = `<span class="match-badge match-listed">✓ Listed in dispatcher file</span>`;
-  else badge.innerHTML = `<span class="match-badge match-fresh">⚠ Not in list — Fresh/Unlisted</span>`;
+  if(!p || !val){ badge.innerHTML=''; return; }
+  if(p.dispatcherSet.size===0){ badge.innerHTML = `<span class="match-badge match-none">No dispatcher list loaded for this project</span>`; return; }
+  if(p.dispatcherSet.has(val)) badge.innerHTML = `<span class="match-badge match-listed">✓ Found in dispatcher list</span>`;
+  else badge.innerHTML = `<span class="match-badge match-fresh">⚠ Not found in list — will record as Fresh/Unlisted</span>`;
 }
 
+/* ============================================================
+   METER NO — duplicate check + field highlight
+   ============================================================ */
 function onMeterNoInput(){
   checkDispatcherMatch();
   const val = document.getElementById('meterNo').value.trim();
@@ -661,8 +830,10 @@ function onMeterNoInput(){
   checkDuplicateLive();
 }
 function isDuplicate(meterNo){
+  const p = getActiveProject();
+  if(!p) return null;
   const v = meterNo.trim().toUpperCase();
-  return records.find(r=>r.meterNo.trim().toUpperCase()===v);
+  return p.records.find(r=>r.meterNo.trim().toUpperCase()===v);
 }
 function checkDuplicateLive(){
   const val = document.getElementById('meterNo').value.trim();
@@ -672,12 +843,14 @@ function checkDuplicateLive(){
   if(hit){
     dupEl.innerHTML = `<div class="dup-warning">⚠ DUPLICATE ENTRY — Meter No. ${val} was already recorded as Sr# ${hit.sr}.</div>`;
     playBeep(300, 350);
-  } else {
-    dupEl.innerHTML = '';
-  }
+  } else { dupEl.innerHTML = ''; }
 }
 
+/* ============================================================
+   BARCODE SCANNER (also grabs the reading frame)
+   ============================================================ */
 function openScanner(){
+  if(!getActiveProject()){ alert('Open a project first.'); return; }
   scannerGotDecode = false;
   document.getElementById('scannerModal').classList.add('open');
   const formatsToSupport = [
@@ -707,16 +880,11 @@ function openScanner(){
 }
 function cancelScanner(){
   closeScanner();
-  if(!scannerGotDecode && !document.getElementById('meterNo').value.trim()){
-    flagFieldNeeded('meterNo');
-  }
+  if(!scannerGotDecode && !document.getElementById('meterNo').value.trim()) flagFieldNeeded('meterNo');
 }
 function closeScanner(){
   document.getElementById('scannerModal').classList.remove('open');
-  if(html5QrScanner){
-    html5QrScanner.stop().then(()=>html5QrScanner.clear()).catch(()=>{});
-    html5QrScanner = null;
-  }
+  if(html5QrScanner){ html5QrScanner.stop().then(()=>html5QrScanner.clear()).catch(()=>{}); html5QrScanner = null; }
 }
 function captureFrameFromScanner(){
   const video = document.querySelector('#qr-reader video');
@@ -730,6 +898,9 @@ function captureFrameFromScanner(){
   tryOcr(dataUrl);
 }
 
+/* ============================================================
+   CAMERA CAPTURE
+   ============================================================ */
 function openCamera(mode){
   currentCameraMode = mode;
   document.getElementById('cameraModalTitle').textContent = mode==='reading' ? 'Re-capture Meter Reading' : 'Capture Condition Photo';
@@ -759,6 +930,9 @@ function capturePhoto(){
   closeCamera();
 }
 
+/* ============================================================
+   OCR
+   ============================================================ */
 let tesseractLoaded = false;
 function loadTesseract(cb){
   if(tesseractLoaded){ cb(); return; }
@@ -787,10 +961,7 @@ function tryOcr(dataUrl){
         flagFieldNeeded('readWhole');
         statusEl.textContent = 'OCR could not confidently read the digits — please enter manually.';
       }
-    }).catch(()=>{
-      flagFieldNeeded('readWhole');
-      statusEl.textContent = 'OCR failed — please enter the reading manually.';
-    });
+    }).catch(()=>{ flagFieldNeeded('readWhole'); statusEl.textContent = 'OCR failed — please enter the reading manually.'; });
   });
 }
 function updateReadout(){
@@ -803,11 +974,11 @@ document.getElementById('readWhole').addEventListener('input', function(){
   updateReadout();
   if(this.value.trim().length>0) flagFieldOk('readWhole'); else clearFieldFlags('readWhole');
 });
-document.getElementById('readFrac').addEventListener('input', function(){
-  updateReadout();
-  clearFieldFlags('readFrac');
-});
+document.getElementById('readFrac').addEventListener('input', function(){ updateReadout(); clearFieldFlags('readFrac'); });
 
+/* ============================================================
+   SAVE / EXPORT / CLOUD SYNC (per active project)
+   ============================================================ */
 function summarizeCondition(){
   const dirt = getToggleVal('tgCounterDirt') || 'clean';
   const glass = getToggleVal('tgGlass') || 'ok';
@@ -828,14 +999,15 @@ function summarizeDocs(){
 }
 
 function saveRecord(){
+  const p = getActiveProject();
+  if(!p){ alert('Open a project first.'); return; }
   const meterNo = document.getElementById('meterNo').value.trim();
   if(!meterNo){ alert('Please enter or scan a Meter No. before saving.'); flagFieldNeeded('meterNo'); return; }
 
   const existing = isDuplicate(meterNo);
   if(existing){
     playBeep(300,350);
-    const proceed = confirm(`DUPLICATE ENTRY\n\nMeter No. ${meterNo} was already recorded as Sr# ${existing.sr}.\n\nSave anyway as a new entry?`);
-    if(!proceed) return;
+    if(!confirm(`DUPLICATE ENTRY\n\nMeter No. ${meterNo} was already recorded as Sr# ${existing.sr}.\n\nSave anyway as a new entry?`)) return;
   }
 
   const cat = selectedCategory;
@@ -848,67 +1020,69 @@ function saveRecord(){
   const reading = whole ? `${whole}.${frac} m³` : '';
 
   const rec = {
-    sr: srCounter++, meterNo, meterType, reading,
+    sr: p.srCounter++, meterNo, meterType, reading,
     physicalCondition: summarizeCondition(),
     documentsStatus: summarizeDocs(),
     remarks: document.getElementById('remarks').value.trim(),
-    dispatcherMatch: dispatcherSet.size ? (dispatcherSet.has(meterNo.toUpperCase()) ? 'Listed' : 'Fresh/Unlisted') : 'N/A',
-    project: projectName, device: deviceName, projectCode: projectCode,
+    dispatcherMatch: p.dispatcherSet.size ? (p.dispatcherSet.has(meterNo.toUpperCase()) ? 'Listed' : 'Fresh/Unlisted') : 'N/A',
+    cloudStatus: p.appsScriptUrl ? 'Sending…' : 'Not configured',
   };
-  records.push(rec);
-  renderRecords();
+  p.records.push(rec);
+  syncToSheet(p, rec);
+  renderProjectList();
   renderRecentMini();
   resetForm(true);
   playBeep(1200,120);
 }
 
+function syncToSheet(p, rec){
+  if(!p.appsScriptUrl){ rec.cloudStatus = 'Not configured'; return; }
+  const payload = { sr:rec.sr, meterNo:rec.meterNo, meterType:rec.meterType, reading:rec.reading,
+    physicalCondition:rec.physicalCondition, documentsStatus:rec.documentsStatus,
+    dispatcherMatch:rec.dispatcherMatch, project:p.name, device:p.device, remarks:rec.remarks };
+  fetch(p.appsScriptUrl, { method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify(payload) })
+    .then(()=>{ rec.cloudStatus = 'Sent (unconfirmed — check sheet)'; renderProjectList(); })
+    .catch(()=>{ rec.cloudStatus = 'Send failed — check URL'; renderProjectList(); });
+}
+
 function renderRecentMini(){
+  const p = getActiveProject();
   const wrap = document.getElementById('recentMini');
-  if(records.length===0){ wrap.innerHTML = 'No entries yet.'; return; }
-  const last3 = records.slice(-3).reverse();
+  if(!p || p.records.length===0){ wrap.innerHTML = 'No entries yet.'; return; }
+  const last3 = p.records.slice(-3).reverse();
   wrap.innerHTML = last3.map(r=>`
     <div class="mini-record">
       <div><span class="mno">${r.meterNo}</span><br><span class="mmeta">${r.meterType} · ${r.reading||'no reading'}</span></div>
       <span class="mmeta">Sr#${r.sr}</span>
-    </div>
-  `).join('');
+    </div>`).join('');
 }
 
-function renderRecords(){
-  document.getElementById('recCount').textContent = records.length;
-  document.getElementById('recordsMeta').textContent = `${records.length} record(s) this session — Project: ${projectName || '-'} · Device: ${deviceName || '-'}`;
-  const body = document.getElementById('recordsBody');
-  body.innerHTML = records.map(r=>`
-    <tr>
-      <td>${r.sr}</td><td>${r.meterNo}</td><td>${r.meterType}</td><td>${r.reading}</td>
-      <td>${r.physicalCondition}</td><td>${r.documentsStatus}</td><td>${r.device}</td>
-      <td><button class="pill-btn secondary" style="color:var(--warn); border-color:var(--warn); padding:5px 9px;" onclick="deleteRecord(${r.sr})">✕</button></td>
-    </tr>
-  `).join('');
-}
-function deleteRecord(sr){ records = records.filter(r=>r.sr!==sr); renderRecords(); renderRecentMini(); }
-
-function exportExcel(){
-  if(records.length===0){ alert('No records to export yet.'); return; }
-  const rows = records.map(r=>({
+function exportProjectExcel(id){
+  const p = projects.find(x=>x.id===id);
+  if(!p || p.records.length===0){ alert('No records to export yet for this project.'); return; }
+  const rows = p.records.map(r=>({
     'Sr. No.': r.sr, 'Meter No.': r.meterNo, 'Meter Type': r.meterType, 'Meter Reading': r.reading,
     'Physically Condition of Meters': r.physicalCondition, 'Documents Status': r.documentsStatus,
-    'Dispatcher Match': r.dispatcherMatch, 'Project': r.project, 'Device': r.device, 'Project Code': r.projectCode,
-    'Remarks': r.remarks,
+    'Dispatcher Match': r.dispatcherMatch, 'Project': p.name, 'Device': p.device,
+    'Cloud Status': r.cloudStatus, 'Remarks': r.remarks,
   }));
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'DMIS Receiving');
   const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
-  const safeProj = (projectName||'Project').replace(/[^a-z0-9]/gi,'_');
-  const safeDev = (deviceName||'Device').replace(/[^a-z0-9]/gi,'_');
+  const safeProj = (p.name||'Project').replace(/[^a-z0-9]/gi,'_');
+  const safeDev = (p.device||'Device').replace(/[^a-z0-9]/gi,'_');
   XLSX.writeFile(wb, `DMIS_${safeProj}_${safeDev}_${stamp}.xlsx`);
 }
 
-function openCloudInfo(){ document.getElementById('cloudInfoModal').classList.add('open'); }
-function closeCloudInfo(){ document.getElementById('cloudInfoModal').classList.remove('open'); }
+function copyAppsScriptCode(){
+  const box = document.getElementById('appsScriptCodeBox');
+  box.select(); box.setSelectionRange(0, 999999);
+  try{ document.execCommand('copy'); alert('Apps Script code copied.'); }
+  catch(e){ alert('Could not copy automatically — please select and copy manually.'); }
+}
 
-function resetForm(keepRecords){
+function resetForm(keepProjectsUntouched){
   document.getElementById('meterNo').value = '';
   document.getElementById('matchBadge').innerHTML = '';
   document.getElementById('dupWarning').innerHTML = '';
@@ -943,6 +1117,7 @@ function resetForm(keepRecords){
 }
 
 updateReadout();
+showTab('projects');
 </script>
 </body>
 </html>
