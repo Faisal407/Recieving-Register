@@ -162,10 +162,14 @@
 <!-- ============ PROJECTS TAB ============ -->
 <div id="tabProjects">
   <div class="banner">
-    <b>Field test build.</b> Data lives only in this browser tab. Create a project, optionally link a Google Sheet,
-    then Open it to start inspecting. Export Excel from each project card as your reliable backup regardless of cloud sync.
+    <b>Field test build.</b> Data lives only in this browser tab. Create a project, link a Google Sheet,
+    then Open it to start inspecting. Share the code on a project's card so other devices can join the
+    same Sheet and pull in what's already been recorded.
   </div>
-  <button class="btn amber" onclick="openNewProjectModal()">➕ New Project</button>
+  <div class="row">
+    <button class="btn amber" onclick="openNewProjectModal()">➕ New Project</button>
+    <button class="btn outline" onclick="openJoinProjectModal()">🔗 Join via Code</button>
+  </div>
   <div id="projectList" style="margin-top:14px;">
     <div class="subtext">No projects yet — create one above to get started.</div>
   </div>
@@ -337,7 +341,9 @@
     <div class="subtext">
       One-time setup, reusable for every project. Uses a free Google Apps Script Web App — no OAuth login needed
       in this page, since the script runs under your own Google account's authorization once deployed. Each
-      project links its own Sheet ID + Web App URL from its card in the Projects tab.
+      project links its own Sheet ID + Web App URL from its card in the Projects tab. This version also lets a
+      second device <b>read back</b> what's already in the Sheet (not just write to it) — that's what powers
+      "Join via Code" and "Sync from Sheet".
     </div>
     <p style="font-size:13.5px; line-height:1.55;">
       <b>1.</b> Open (or create) the Google Sheet for a project.<br>
@@ -346,9 +352,10 @@
       <b>4.</b> Replace <code>PASTE_YOUR_SHEET_ID_HERE</code> with that Sheet's ID (from its URL, between
       <code>/d/</code> and <code>/edit</code>).<br>
       <b>5.</b> Deploy → New deployment → Type: <b>Web app</b> → Execute as: <b>Me</b> → Who has access: <b>Anyone</b>.<br>
-      <b>6.</b> Copy the URL (ends in <code>/exec</code>) into that project's card on the Projects tab.
+      <b>6.</b> Copy the URL (ends in <code>/exec</code>) into that project's card on the Projects tab, then use
+      <b>Copy Share Code</b> there to send it to other devices.
     </p>
-    <textarea readonly rows="20" class="mono" style="font-size:11px; white-space:pre;" id="appsScriptCodeBox">function doPost(e) {
+    <textarea readonly rows="26" class="mono" style="font-size:11px; white-space:pre;" id="appsScriptCodeBox">function doPost(e) {
   var SHEET_ID = 'PASTE_YOUR_SHEET_ID_HERE';
   var ss = SpreadsheetApp.openById(SHEET_ID);
   var data = JSON.parse(e.postData.contents);
@@ -376,13 +383,55 @@
   ]);
   return ContentService.createTextOutput(JSON.stringify({status:'ok'}))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doGet(e) {
+  var SHEET_ID = 'PASTE_YOUR_SHEET_ID_HERE';
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var action = e.parameter.action || 'records';
+  var callback = e.parameter.callback;
+  var result;
+
+  if (action === 'dispatcherList') {
+    var sheet2 = ss.getSheetByName('Sheet2');
+    var meters = [];
+    if (sheet2) {
+      var vals = sheet2.getDataRange().getValues();
+      for (var i = 1; i < vals.length; i++) {
+        if (vals[i][0]) meters.push(String(vals[i][0]));
+      }
+    }
+    result = { meters: meters };
+  } else {
+    var sheet = ss.getSheetByName('DMIS Receiving');
+    var rows = [];
+    if (sheet) {
+      var data = sheet.getDataRange().getValues();
+      var headers = data[0];
+      for (var r = 1; r < data.length; r++) {
+        var row = {};
+        for (var c = 0; c < headers.length; c++) { row[headers[c]] = data[r][c]; }
+        rows.push(row);
+      }
+    }
+    result = { records: rows };
+  }
+
+  var json = JSON.stringify(result);
+  if (callback) {
+    return ContentService.createTextOutput(callback + '(' + json + ')')
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+  return ContentService.createTextOutput(json).setMimeType(ContentService.MimeType.JSON);
 }</textarea>
     <button class="btn outline" onclick="copyAppsScriptCode()">📋 Copy Code</button>
     <div class="banner info" style="margin-top:12px;">
-      <b>Known limitation:</b> the browser can't read the script's response (Apps Script doesn't send CORS
-      headers), so this page can't confirm each row landed — it marks "Sent (unconfirmed)". Keep exporting
-      Excel per project as your reliable backup. <b>OneDrive auto-export</b> has no equivalent no-login trick —
-      that genuinely needs the Phase-2 backend with Microsoft sign-in.
+      <b>Known limitation:</b> writes (Save Entry, dispatcher upload) go through <code>doPost</code>, and the
+      browser still can't read that response — it marks "Sent (unconfirmed)". Reads (Join via Code, Sync from
+      Sheet) go through <code>doGet</code> via a JSONP trick, which <b>does</b> work, so pulling existing records
+      is reliable — writing just isn't confirmable. Keep exporting Excel per project as backup regardless.
+      <b>OneDrive auto-export</b> has no equivalent no-login trick — that genuinely needs the Phase-2 backend
+      with Microsoft sign-in.
     </div>
   </div>
 
@@ -413,11 +462,33 @@
   </div>
 </div>
 
+<!-- Join Project via Code modal -->
+<div class="modal-backdrop" id="joinProjectModal">
+  <div class="modal-box">
+    <h3>Join Project via Code</h3>
+    <div class="subtext">
+      Paste the Share Code from the other device's project card. This links your device to the
+      <b>same Google Sheet</b> and pulls in the records already saved there — that's how sharing works
+      here, since there's no login/backend involved.
+    </div>
+    <label class="field-label">Share Code</label>
+    <textarea id="joinCodeInput" rows="3" placeholder="Paste the code here…"></textarea>
+    <label class="field-label">Your Device Name</label>
+    <input type="text" id="joinDeviceName" placeholder="e.g. Inspector-2 Phone">
+    <button class="btn amber" onclick="joinProjectFromCode()">Join &amp; Pull Records</button>
+    <button class="btn outline" onclick="closeJoinProjectModal()">Cancel</button>
+  </div>
+</div>
+
 <div class="modal-backdrop" id="scannerModal">
   <div class="modal-box">
     <h3>Scan Meter Barcode</h3>
+    <div class="subtext">Fill the box with the barcode <b>and</b> the digit strip together, hold steady, good light helps a lot.</div>
     <div id="qr-reader"></div>
-    <button class="btn outline" onclick="cancelScanner()">Cancel</button>
+    <div class="row" style="margin-top:8px;">
+      <button class="btn outline" id="torchBtn" style="display:none;" onclick="toggleTorch()">🔦 Torch</button>
+      <button class="btn outline" onclick="cancelScanner()">Cancel</button>
+    </div>
   </div>
 </div>
 
@@ -571,6 +642,117 @@ function clearAllData(){
   showTab('projects');
 }
 
+/* ============================================================
+   SHARE CODE — encodes name+sheetId+scriptUrl so another device
+   can "join" the same Sheet without retyping both values by hand.
+   ============================================================ */
+function encodeShareCode(p){
+  try{ return btoa(unescape(encodeURIComponent(JSON.stringify({ n:p.name, s:p.sheetId||'', u:p.appsScriptUrl||'' })))); }
+  catch(e){ return ''; }
+}
+function decodeShareCode(code){
+  try{ return JSON.parse(decodeURIComponent(escape(atob(code.trim())))); }
+  catch(e){ return null; }
+}
+function copyShareCode(id){
+  const p = projects.find(x=>x.id===id);
+  const code = encodeShareCode(p);
+  if(!code){ alert('Could not generate a Share Code.'); return; }
+  navigator.clipboard.writeText(code).then(()=>{
+    alert('Share Code copied. Send it (WhatsApp/SMS) to the other device — they use "Join via Code" on the Projects tab.');
+  }).catch(()=>{ prompt('Copy this Share Code manually:', code); });
+}
+
+function openJoinProjectModal(){ document.getElementById('joinProjectModal').classList.add('open'); }
+function closeJoinProjectModal(){
+  document.getElementById('joinProjectModal').classList.remove('open');
+  document.getElementById('joinCodeInput').value=''; document.getElementById('joinDeviceName').value='';
+}
+function joinProjectFromCode(){
+  const code = document.getElementById('joinCodeInput').value.trim();
+  const device = document.getElementById('joinDeviceName').value.trim();
+  if(!code || !device){ alert('Please paste the Share Code and enter your Device Name.'); return; }
+  const decoded = decodeShareCode(code);
+  if(!decoded){ alert('That Share Code could not be read — check it was pasted in full.'); return; }
+  const proj = {
+    id: 'p_' + Date.now() + Math.floor(Math.random()*1000),
+    name: decoded.n || 'Joined Project', device, sheetId: decoded.s||'', appsScriptUrl: decoded.u||'',
+    records: [], dispatcherSet: new Set(), srCounter: 1,
+    createdAt: new Date().toLocaleString(),
+  };
+  projects.push(proj);
+  activeProjectId = proj.id;
+  closeJoinProjectModal();
+  renderProjectList();
+  if(proj.appsScriptUrl){
+    pullRecordsFromSheet(proj.id);
+    pullDispatcherFromSheet(proj.id);
+  } else {
+    alert('Joined locally, but this code had no Apps Script URL attached, so there\'s nothing to pull in yet.');
+  }
+}
+
+/* ============================================================
+   JSONP — reads data back out of the linked Google Sheet.
+   (Apps Script doesn't send CORS headers, so a normal fetch() can't
+   read the response — JSONP via a <script> tag sidesteps that.)
+   ============================================================ */
+function jsonpRequest(url, params){
+  return new Promise((resolve, reject)=>{
+    const cbName = 'jsonp_cb_' + Date.now() + '_' + Math.floor(Math.random()*100000);
+    const script = document.createElement('script');
+    let timeoutId;
+    function cleanup(){ clearTimeout(timeoutId); delete window[cbName]; script.remove(); }
+    window[cbName] = (data)=>{ resolve(data); cleanup(); };
+    const qs = Object.keys(params).map(k=>encodeURIComponent(k)+'='+encodeURIComponent(params[k])).join('&') + '&callback=' + cbName;
+    script.src = url + (url.includes('?') ? '&' : '?') + qs;
+    script.onerror = ()=>{ cleanup(); reject(new Error('JSONP request failed')); };
+    document.body.appendChild(script);
+    timeoutId = setTimeout(()=>{ cleanup(); reject(new Error('JSONP timeout')); }, 15000);
+  });
+}
+function pullRecordsFromSheet(id){
+  const p = projects.find(x=>x.id===id);
+  if(!p || !p.appsScriptUrl) return;
+  const statusEl = document.getElementById('pcStatus-'+id);
+  if(statusEl) statusEl.textContent = 'Pulling records from Sheet…';
+  jsonpRequest(p.appsScriptUrl, {action:'records'}).then(data=>{
+    const rows = (data && data.records) || [];
+    let added = 0;
+    rows.forEach(row=>{
+      const meterNo = row['Meter No'];
+      if(!meterNo) return;
+      const already = p.records.find(r=>r.meterNo.trim().toUpperCase()===String(meterNo).trim().toUpperCase());
+      if(already) return;
+      const srNum = parseInt(row['Sr No']) || 0;
+      if(srNum) p.srCounter = Math.max(p.srCounter, srNum+1);
+      p.records.push({
+        sr: srNum || ('S'+(++added)), meterNo: String(meterNo), meterType: row['Meter Type']||'',
+        reading: row['Meter Reading']||'', physicalCondition: row['Physical Condition']||'',
+        documentsStatus: row['Documents Status']||'', remarks: row['Remarks']||'',
+        dispatcherMatch: row['Dispatcher Match']||'', cloudStatus: 'Synced from sheet',
+      });
+      added++;
+    });
+    if(statusEl) statusEl.textContent = `Pulled ${added} new record(s) from the Sheet.`;
+    renderProjectList();
+    if(activeProjectId===id) renderRecentMini();
+  }).catch(()=>{ if(statusEl) statusEl.textContent = 'Could not pull records — make sure the Apps Script includes the doGet code from Settings.'; });
+}
+function pullDispatcherFromSheet(id){
+  const p = projects.find(x=>x.id===id);
+  if(!p || !p.appsScriptUrl) return;
+  jsonpRequest(p.appsScriptUrl, {action:'dispatcherList'}).then(data=>{
+    const meters = (data && data.meters) || [];
+    if(meters.length){
+      p.dispatcherSet = new Set(meters.map(m=>String(m).trim().toUpperCase()));
+      if(activeProjectId===id){
+        document.getElementById('dispatcherStatus').textContent = `${p.dispatcherSet.size} meter numbers pulled from Sheet2 for this project.`;
+      }
+    }
+  }).catch(()=>{});
+}
+
 function renderProjectList(){
   const wrap = document.getElementById('projectList');
   if(projects.length===0){ wrap.innerHTML = '<div class="subtext">No projects yet — create one above to get started.</div>'; return; }
@@ -601,6 +783,10 @@ function renderProjectList(){
         <div class="row" style="margin-top:8px;">
           <button class="btn outline small" onclick="testProjectCloudSync('${p.id}')">Test</button>
           <button class="btn amber small" onclick="saveProjectCloudSettings('${p.id}')">Save</button>
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <button class="btn outline small" onclick="copyShareCode('${p.id}')">🔗 Copy Share Code</button>
+          <button class="btn outline small" onclick="pullRecordsFromSheet('${p.id}')">🔄 Sync from Sheet</button>
         </div>
         <div class="ocr-status" id="pcStatus-${p.id}"></div>
       </div>
@@ -881,7 +1067,15 @@ function openScanner(){
   html5QrScanner = new Html5Qrcode("qr-reader", { formatsToSupport, verbose:false });
   html5QrScanner.start(
     { facingMode: "environment" },
-    { fps: 10, qrbox: { width: 260, height: 120 } },
+    {
+      fps: 15,
+      qrbox: function(viewfinderWidth, viewfinderHeight){
+        const w = Math.floor(Math.min(viewfinderWidth, viewfinderHeight * 2.2) * 0.85);
+        return { width: Math.max(220, Math.min(360, w)), height: Math.max(110, Math.min(180, Math.floor(w*0.5))) };
+      },
+      videoConstraints: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+      experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+    },
     (decodedText)=>{
       scannerGotDecode = true;
       document.getElementById('meterNo').value = decodedText;
@@ -892,11 +1086,26 @@ function openScanner(){
       closeScanner();
     },
     ()=>{ }
-  ).catch(err=>{
+  ).then(()=>{
+    tryEnableTorch();
+  }).catch(err=>{
     alert('Could not start camera for scanning: ' + err);
     closeScanner();
     if(!document.getElementById('meterNo').value.trim()) flagFieldNeeded('meterNo');
   });
+}
+function tryEnableTorch(){
+  const btn = document.getElementById('torchBtn');
+  if(!html5QrScanner){ return; }
+  html5QrScanner.getRunningTrackCapabilities().then(caps=>{
+    btn.style.display = caps.torch ? 'block' : 'none';
+  }).catch(()=>{ btn.style.display = 'none'; });
+}
+let torchOn = false;
+function toggleTorch(){
+  if(!html5QrScanner) return;
+  torchOn = !torchOn;
+  html5QrScanner.applyVideoConstraints({ advanced: [{ torch: torchOn }] }).catch(()=>{ torchOn = !torchOn; });
 }
 function cancelScanner(){
   closeScanner();
@@ -904,6 +1113,7 @@ function cancelScanner(){
 }
 function closeScanner(){
   document.getElementById('scannerModal').classList.remove('open');
+  torchOn = false;
   if(html5QrScanner){ html5QrScanner.stop().then(()=>html5QrScanner.clear()).catch(()=>{}); html5QrScanner = null; }
 }
 function captureFrameFromScanner(){
@@ -912,7 +1122,7 @@ function captureFrameFromScanner(){
   const canvas = document.getElementById('camCanvas');
   canvas.width = video.videoWidth; canvas.height = video.videoHeight;
   canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
   readingPhotoData = dataUrl;
   document.getElementById('readingThumb').innerHTML = `<div class="thumb"><img src="${dataUrl}"></div>`;
   tryOcr(dataUrl);
@@ -925,7 +1135,7 @@ function openCamera(mode){
   currentCameraMode = mode;
   document.getElementById('cameraModalTitle').textContent = mode==='reading' ? 'Re-capture Meter Reading' : 'Capture Condition Photo';
   document.getElementById('cameraModal').classList.add('open');
-  navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width:{ideal:1920}, height:{ideal:1080} } })
     .then(stream=>{ cameraStream = stream; document.getElementById('camVideo').srcObject = stream; })
     .catch(err=>{ alert('Camera access failed: ' + err); closeCamera(); });
 }
@@ -951,7 +1161,8 @@ function capturePhoto(){
 }
 
 /* ============================================================
-   OCR
+   OCR — detects the black (whole-unit) band and red (sub-division) band separately
+   and OCRs each in isolation, instead of guessing where a whole-frame digit string splits.
    ============================================================ */
 let tesseractLoaded = false;
 function loadTesseract(cb){
@@ -962,11 +1173,124 @@ function loadTesseract(cb){
   s.onerror = ()=>{ document.getElementById('ocrStatus').textContent = 'Could not load OCR engine — enter reading manually.'; flagFieldNeeded('readWhole'); };
   document.head.appendChild(s);
 }
+
+function classifyPixel(r,g,b){
+  if(r>85 && (r-g)>35 && (r-b)>35) return 'red';
+  if(r<70 && g<70 && b<70) return 'black';
+  return 'other';
+}
+
+/* Scans a downsampled version of the image to find the row-band where both black and red
+   backgrounds are present (the digit strip), then finds the column where black hands off to red. */
+function findDigitBand(imgData, w, h){
+  const data = imgData.data;
+  const rowRed = new Array(h).fill(0), rowBlack = new Array(h).fill(0);
+  for(let y=0;y<h;y++){
+    let red=0, black=0;
+    for(let x=0;x<w;x+=2){
+      const idx=(y*w+x)*4;
+      const cls = classifyPixel(data[idx],data[idx+1],data[idx+2]);
+      if(cls==='red') red++; else if(cls==='black') black++;
+    }
+    rowRed[y]=red; rowBlack[y]=black;
+  }
+  const minCount = w*0.07;
+  const bandRows = [];
+  for(let y=0;y<h;y++){ if(rowRed[y]>minCount && rowBlack[y]>minCount) bandRows.push(y); }
+  if(bandRows.length < 4) return null;
+  const top = bandRows[0], bottom = bandRows[bandRows.length-1];
+
+  const sampleRows = [];
+  const step = Math.max(1, Math.floor((bottom-top)/6));
+  for(let y=top;y<=bottom;y+=step) sampleRows.push(y);
+  const colScore = new Array(w).fill(0);
+  for(const y of sampleRows){
+    for(let x=0;x<w;x++){
+      const idx=(y*w+x)*4;
+      const cls = classifyPixel(data[idx],data[idx+1],data[idx+2]);
+      if(cls==='red') colScore[x]+=1; else if(cls==='black') colScore[x]-=1;
+    }
+  }
+  const smooth = new Array(w).fill(0);
+  const win=5;
+  for(let x=0;x<w;x++){
+    let sum=0,count=0;
+    for(let k=-win;k<=win;k++){ const xx=x+k; if(xx>=0&&xx<w){ sum+=colScore[xx]; count++; } }
+    smooth[x]=sum/count;
+  }
+  let splitX=-1;
+  for(let x=1;x<w;x++){
+    if(smooth[x-1]<=0 && smooth[x]>0){
+      let sustained=true;
+      for(let k=0;k<Math.min(10,w-x);k++){ if(smooth[x+k]<=0){ sustained=false; break; } }
+      if(sustained){ splitX=x; break; }
+    }
+  }
+  if(splitX<0) return null;
+  return {top, bottom, splitX};
+}
+
 function tryOcr(dataUrl){
   const statusEl = document.getElementById('ocrStatus');
-  statusEl.textContent = 'Loading OCR engine…';
+  statusEl.textContent = 'Analyzing photo for black/red digit band…';
+  const img = new Image();
+  img.onload = ()=>{
+    const maxW = 500;
+    const scale = Math.min(1, maxW/img.width);
+    const aw = Math.max(1,Math.round(img.width*scale)), ah = Math.max(1,Math.round(img.height*scale));
+    const ac = document.createElement('canvas'); ac.width=aw; ac.height=ah;
+    const actx = ac.getContext('2d');
+    actx.drawImage(img,0,0,aw,ah);
+    let band = null;
+    try{ band = findDigitBand(actx.getImageData(0,0,aw,ah), aw, ah); }catch(e){ band = null; }
+
+    loadTesseract(()=>{
+      if(band){
+        statusEl.textContent = 'Found black/red band — reading each side separately…';
+        const fx = img.width/aw, fy = img.height/ah;
+        const padY = Math.round((band.bottom-band.top)*0.2*fy) + 2;
+        const top = Math.max(0, Math.round(band.top*fy) - padY);
+        const bottom = Math.min(img.height, Math.round(band.bottom*fy) + padY);
+        const splitX = Math.max(1, Math.min(img.width-1, Math.round(band.splitX*fx)));
+        const bandH = Math.max(1, bottom-top);
+
+        const blackCanvas = document.createElement('canvas');
+        blackCanvas.width = splitX; blackCanvas.height = bandH;
+        blackCanvas.getContext('2d').drawImage(img, 0, top, splitX, bandH, 0, 0, splitX, bandH);
+        const redCanvas = document.createElement('canvas');
+        redCanvas.width = Math.max(1,img.width-splitX); redCanvas.height = bandH;
+        redCanvas.getContext('2d').drawImage(img, splitX, top, img.width-splitX, bandH, 0, 0, img.width-splitX, bandH);
+
+        Promise.all([
+          Tesseract.recognize(blackCanvas.toDataURL('image/png'), 'eng', { tessedit_char_whitelist:'0123456789', tessedit_pageseg_mode:'7' }),
+          Tesseract.recognize(redCanvas.toDataURL('image/png'), 'eng', { tessedit_char_whitelist:'0123456789', tessedit_pageseg_mode:'7' }),
+        ]).then(([blackRes, redRes])=>{
+          const whole = (blackRes.data.text||'').replace(/[^0-9]/g,'');
+          const frac = (redRes.data.text||'').replace(/[^0-9]/g,'');
+          if(whole.length >= 3){
+            document.getElementById('readWhole').value = whole;
+            document.getElementById('readFrac').value = frac;
+            updateReadout();
+            flagFieldOk('readWhole'); flagFieldOk('readFrac');
+            statusEl.textContent = `OCR (black/red split) suggestion: ${whole}.${frac||'000'} — please verify against the photo before saving.`;
+          } else {
+            statusEl.textContent = 'Split-band reading was unclear — trying whole-image fallback…';
+            tryOcrWholeImage(dataUrl);
+          }
+        }).catch(()=>{ statusEl.textContent = 'Split-band OCR failed — trying whole-image fallback…'; tryOcrWholeImage(dataUrl); });
+      } else {
+        statusEl.textContent = 'No clear black/red band found — reading the whole image instead…';
+        tryOcrWholeImage(dataUrl);
+      }
+    });
+  };
+  img.onerror = ()=>{ statusEl.textContent = 'Could not analyze the photo.'; flagFieldNeeded('readWhole'); };
+  img.src = dataUrl;
+}
+
+function tryOcrWholeImage(dataUrl){
+  const statusEl = document.getElementById('ocrStatus');
   loadTesseract(()=>{
-    statusEl.textContent = 'Reading digits… this can take a few seconds.';
     Tesseract.recognize(dataUrl, 'eng', { tessedit_char_whitelist: '0123456789' }).then(({data:{text}})=>{
       const digitsOnly = (text || '').replace(/[^0-9]/g,'');
       if(digitsOnly.length >= 5){
@@ -976,7 +1300,7 @@ function tryOcr(dataUrl){
         document.getElementById('readFrac').value = frac;
         updateReadout();
         flagFieldOk('readWhole'); flagFieldOk('readFrac');
-        statusEl.textContent = `OCR suggestion: ${whole}.${frac} — please verify against the photo before saving.`;
+        statusEl.textContent = `OCR (whole image) suggestion: ${whole}.${frac} — please verify against the photo before saving.`;
       } else {
         flagFieldNeeded('readWhole');
         statusEl.textContent = 'OCR could not confidently read the digits — please enter manually.';
