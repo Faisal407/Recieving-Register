@@ -1095,16 +1095,25 @@ function openScanner(){
 }
 function tryEnableTorch(){
   const btn = document.getElementById('torchBtn');
-  if(!html5QrScanner){ return; }
-  html5QrScanner.getRunningTrackCapabilities().then(caps=>{
-    btn.style.display = caps.torch ? 'block' : 'none';
-  }).catch(()=>{ btn.style.display = 'none'; });
+  if(!html5QrScanner || !btn){ return; }
+  try{
+    if(typeof html5QrScanner.getRunningTrackCapabilities !== 'function'){ btn.style.display = 'none'; return; }
+    const caps = html5QrScanner.getRunningTrackCapabilities();
+    if(caps && typeof caps.then === 'function'){
+      caps.then(c=>{ btn.style.display = (c && c.torch) ? 'block' : 'none'; }).catch(()=>{ btn.style.display = 'none'; });
+    } else {
+      btn.style.display = (caps && caps.torch) ? 'block' : 'none';
+    }
+  }catch(e){ btn.style.display = 'none'; }
 }
 let torchOn = false;
 function toggleTorch(){
-  if(!html5QrScanner) return;
+  if(!html5QrScanner || typeof html5QrScanner.applyVideoConstraints !== 'function') return;
   torchOn = !torchOn;
-  html5QrScanner.applyVideoConstraints({ advanced: [{ torch: torchOn }] }).catch(()=>{ torchOn = !torchOn; });
+  try{
+    const result = html5QrScanner.applyVideoConstraints({ advanced: [{ torch: torchOn }] });
+    if(result && typeof result.catch === 'function'){ result.catch(()=>{ torchOn = !torchOn; }); }
+  }catch(e){ torchOn = !torchOn; }
 }
 function cancelScanner(){
   closeScanner();
