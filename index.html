@@ -195,10 +195,10 @@
 
   <div class="card" id="section-1">
     <h2><span class="num">1</span> Meter Identity</h2>
-    <div class="subtext">Scan the meter's barcode — this also auto-captures the reading from the same frame. Type manually if the barcode won't read.
+    <div class="subtext">Scan the meter's barcode, or type the number manually if the barcode won't read.
       Either way, the meter gets recorded — this just tells you whether it matched the dispatcher list.</div>
     <div class="row">
-      <button class="btn amber" onclick="openScanner()">📷 Scan Barcode (+ auto-capture reading)</button>
+      <button class="btn amber" onclick="openScanner()">📷 Scan Barcode</button>
     </div>
     <label class="field-label">Meter No.</label>
     <input type="text" id="meterNo" placeholder="e.g. A7885606" oninput="onMeterNoInput()">
@@ -227,8 +227,8 @@
 
   <div class="card" id="section-3">
     <h2><span class="num">3</span> Meter Reading</h2>
-    <div class="subtext">Auto-captured when you scanned the barcode in Step 1. Re-capture below only if the digits weren't clear.</div>
-    <button class="btn outline" onclick="openCamera('reading')">📷 Re-capture Reading</button>
+    <div class="subtext">Point the camera at the index/counter digits and capture — separate from the barcode scan in Step 1.</div>
+    <button class="btn amber" onclick="openCamera('reading')">📷 Scan / Capture Reading</button>
     <div class="ocr-status" id="ocrStatus"></div>
     <div class="thumb-row" id="readingThumb"></div>
     <label class="field-label">Whole m³ digits</label>
@@ -339,26 +339,27 @@
   <div class="card">
     <h2>☁ Cloud Sync — Apps Script Setup</h2>
     <div class="subtext">
-      One-time setup, reusable for every project. Uses a free Google Apps Script Web App — no OAuth login needed
-      in this page, since the script runs under your own Google account's authorization once deployed. Each
-      project links its own Sheet ID + Web App URL from its card in the Projects tab. This version also lets a
-      second device <b>read back</b> what's already in the Sheet (not just write to it) — that's what powers
-      "Join via Code" and "Sync from Sheet".
+      <b>You only do this once — total, not per project.</b> This one Web App handles every project's Sheet,
+      because the Sheet ID is sent along with each request instead of being fixed inside the script. So for
+      every new project: just create a new Google Sheet, copy its ID into the project card, and reuse this
+      same Web App URL — no new script, no redeploying.
     </div>
     <p style="font-size:13.5px; line-height:1.55;">
-      <b>1.</b> Open (or create) the Google Sheet for a project.<br>
-      <b>2.</b> Extensions → Apps Script.<br>
-      <b>3.</b> Delete any starter code, paste the script below.<br>
-      <b>4.</b> Replace <code>PASTE_YOUR_SHEET_ID_HERE</code> with that Sheet's ID (from its URL, between
-      <code>/d/</code> and <code>/edit</code>).<br>
-      <b>5.</b> Deploy → New deployment → Type: <b>Web app</b> → Execute as: <b>Me</b> → Who has access: <b>Anyone</b>.<br>
-      <b>6.</b> Copy the URL (ends in <code>/exec</code>) into that project's card on the Projects tab, then use
-      <b>Copy Share Code</b> there to send it to other devices.
+      <b>1.</b> Go to <code>script.google.com</code> → New project (this does <b>not</b> need to be opened
+      from inside a specific Sheet).<br>
+      <b>2.</b> Delete any starter code, paste the script below exactly as-is — nothing to fill in or replace.<br>
+      <b>3.</b> Deploy → New deployment → Type: <b>Web app</b> → Execute as: <b>Me</b> → Who has access: <b>Anyone</b>.<br>
+      <b>4.</b> Copy the URL (ends in <code>/exec</code>).<br>
+      <b>5.</b> For <i>every</i> project — new or existing — paste that same URL into the project's card, along
+      with that project's own Sheet ID. That's it, nothing else to set up per project.
     </p>
-    <textarea readonly rows="26" class="mono" style="font-size:11px; white-space:pre;" id="appsScriptCodeBox">function doPost(e) {
-  var SHEET_ID = 'PASTE_YOUR_SHEET_ID_HERE';
-  var ss = SpreadsheetApp.openById(SHEET_ID);
+    <div class="banner info" style="margin-top:4px; margin-bottom:14px;">
+      <b>One requirement:</b> every Sheet ID you use must belong to (or be shared with) the same Google account
+      that deployed this script — since the script writes using that account's permissions.
+    </div>
+    <textarea readonly rows="24" class="mono" style="font-size:11px; white-space:pre;" id="appsScriptCodeBox">function doPost(e) {
   var data = JSON.parse(e.postData.contents);
+  var ss = SpreadsheetApp.openById(data.sheetId);
 
   if (data.action === 'dispatcherList') {
     var sheet2 = ss.getSheetByName('Sheet2');
@@ -386,8 +387,7 @@
 }
 
 function doGet(e) {
-  var SHEET_ID = 'PASTE_YOUR_SHEET_ID_HERE';
-  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var ss = SpreadsheetApp.openById(e.parameter.sheetId);
   var action = e.parameter.action || 'records';
   var callback = e.parameter.callback;
   var result;
@@ -452,11 +452,14 @@ function doGet(e) {
     <input type="text" id="npName" placeholder="e.g. DMIS Receiving — Batch 14">
     <label class="field-label">Device Name</label>
     <input type="text" id="npDevice" placeholder="e.g. Inspector-1 Phone">
-    <label class="field-label">Google Sheet ID (optional — link later if unsure)</label>
-    <input type="text" id="npSheetId" placeholder="From the Sheet's URL, e.g. 1AbC...xyz">
-    <label class="field-label">Apps Script Web App URL (optional)</label>
+    <label class="field-label">Google Sheet ID for this project (optional — link later if unsure)</label>
+    <input type="text" id="npSheetId" placeholder="From this project's own Sheet URL, e.g. 1AbC...xyz">
+    <label class="field-label">Apps Script Web App URL (optional — same URL reused for every project)</label>
     <input type="text" id="npScriptUrl" placeholder="https://script.google.com/macros/s/…/exec">
-    <div class="subtext" style="margin-top:8px;">See the <b>Settings</b> tab for how to get these two values.</div>
+    <div class="subtext" style="margin-top:8px;">
+      One Apps Script deployment covers all your projects — see <b>Settings</b> for the one-time setup.
+      Each project just needs its own Sheet ID here.
+    </div>
     <button class="btn amber" onclick="createProject()">Create Project</button>
     <button class="btn outline" onclick="closeNewProjectModal()">Cancel</button>
   </div>
@@ -483,7 +486,7 @@ function doGet(e) {
 <div class="modal-backdrop" id="scannerModal">
   <div class="modal-box">
     <h3>Scan Meter Barcode</h3>
-    <div class="subtext">Fill the box with the barcode <b>and</b> the digit strip together, hold steady, good light helps a lot.</div>
+    <div class="subtext">Fill the box with just the barcode, hold steady, good light helps a lot.</div>
     <div id="qr-reader"></div>
     <div class="row" style="margin-top:8px;">
       <button class="btn outline" id="torchBtn" style="display:none;" onclick="toggleTorch()">🔦 Torch</button>
@@ -609,10 +612,10 @@ function saveProjectCloudSettings(id){
 }
 function testProjectCloudSync(id){
   const p = projects.find(x=>x.id===id);
-  if(!p.appsScriptUrl){ alert('Paste the Apps Script Web App URL for this project first.'); return; }
+  if(!p.appsScriptUrl || !p.sheetId){ alert('Paste both the Google Sheet ID and the Apps Script Web App URL for this project first.'); return; }
   const statusEl = document.getElementById('pcStatus-'+id);
   statusEl.textContent = 'Sending test row…';
-  const testRow = { sr:'TEST', meterNo:'TEST-CONNECTION', meterType:'-', reading:'-', physicalCondition:'-',
+  const testRow = { sheetId:p.sheetId, sr:'TEST', meterNo:'TEST-CONNECTION', meterType:'-', reading:'-', physicalCondition:'-',
     documentsStatus:'-', dispatcherMatch:'-', project:p.name, device:p.device, remarks:'Connection test row' };
   fetch(p.appsScriptUrl, { method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify(testRow) })
     .then(()=>{ statusEl.textContent = 'Test row sent — open the Google Sheet to confirm (response can\'t be read from here).'; })
@@ -713,10 +716,10 @@ function jsonpRequest(url, params){
 }
 function pullRecordsFromSheet(id){
   const p = projects.find(x=>x.id===id);
-  if(!p || !p.appsScriptUrl) return;
+  if(!p || !p.appsScriptUrl || !p.sheetId) return;
   const statusEl = document.getElementById('pcStatus-'+id);
   if(statusEl) statusEl.textContent = 'Pulling records from Sheet…';
-  jsonpRequest(p.appsScriptUrl, {action:'records'}).then(data=>{
+  jsonpRequest(p.appsScriptUrl, {action:'records', sheetId:p.sheetId}).then(data=>{
     const rows = (data && data.records) || [];
     let added = 0;
     rows.forEach(row=>{
@@ -741,8 +744,8 @@ function pullRecordsFromSheet(id){
 }
 function pullDispatcherFromSheet(id){
   const p = projects.find(x=>x.id===id);
-  if(!p || !p.appsScriptUrl) return;
-  jsonpRequest(p.appsScriptUrl, {action:'dispatcherList'}).then(data=>{
+  if(!p || !p.appsScriptUrl || !p.sheetId) return;
+  jsonpRequest(p.appsScriptUrl, {action:'dispatcherList', sheetId:p.sheetId}).then(data=>{
     const meters = (data && data.meters) || [];
     if(meters.length){
       p.dispatcherSet = new Set(meters.map(m=>String(m).trim().toUpperCase()));
@@ -757,13 +760,14 @@ function renderProjectList(){
   const wrap = document.getElementById('projectList');
   if(projects.length===0){ wrap.innerHTML = '<div class="subtext">No projects yet — create one above to get started.</div>'; return; }
   wrap.innerHTML = projects.map(p=>{
-    const cloudOn = !!p.appsScriptUrl;
+    const cloudOn = !!(p.appsScriptUrl && p.sheetId);
     const recordsTableRows = p.records.map(r=>`
       <tr>
         <td>${r.sr}</td><td>${r.meterNo}</td><td>${r.meterType}</td><td>${r.reading}</td>
         <td>${r.physicalCondition}</td><td>${r.documentsStatus}</td><td>${r.cloudStatus||'-'}</td>
         <td><button class="pill-btn secondary" style="color:var(--warn); border-color:var(--warn); padding:4px 8px;" onclick="deleteProjectRecord('${p.id}',${r.sr})">✕</button></td>
       </tr>`).join('');
+
     return `
     <div class="project-card ${p.id===activeProjectId ? 'active' : ''}">
       <div class="pc-head">
@@ -776,9 +780,9 @@ function renderProjectList(){
       </div>
 
       <div class="pc-cloud">
-        <label class="field-label">Google Sheet ID</label>
+        <label class="field-label">Google Sheet ID (unique to this project)</label>
         <input type="text" id="pcSheetId-${p.id}" value="${p.sheetId||''}" placeholder="Sheet ID from its URL">
-        <label class="field-label">Apps Script Web App URL</label>
+        <label class="field-label">Apps Script Web App URL (same one for every project)</label>
         <input type="text" id="pcScriptUrl-${p.id}" value="${p.appsScriptUrl||''}" placeholder="https://script.google.com/macros/s/…/exec">
         <div class="row" style="margin-top:8px;">
           <button class="btn outline small" onclick="testProjectCloudSync('${p.id}')">Test</button>
@@ -1004,15 +1008,16 @@ function loadDispatcherRows(p, rows, fileName, statusEl){
   });
   statusEl.textContent = `Loaded ${p.dispatcherSet.size} meter numbers from ${fileName}.`;
   checkDispatcherMatch();
-  if(p.appsScriptUrl){
+
+  if(p.appsScriptUrl && p.sheetId){
     statusEl.textContent += ' Uploading to Sheet2…';
     fetch(p.appsScriptUrl, {
       method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({ action:'dispatcherList', meters:[...p.dispatcherSet] })
+      body: JSON.stringify({ action:'dispatcherList', sheetId:p.sheetId, meters:[...p.dispatcherSet] })
     }).then(()=>{ statusEl.textContent = `Loaded ${p.dispatcherSet.size} meter numbers — sent to Sheet2 (unconfirmed — check the sheet).`; })
       .catch(()=>{ statusEl.textContent = `Loaded ${p.dispatcherSet.size} meter numbers locally — Sheet2 upload failed, check the URL.`; });
   } else {
-    statusEl.textContent += ' No Sheet linked for this project — stored locally only.';
+    statusEl.textContent += ' No Sheet ID / Apps Script URL linked for this project — stored locally only.';
   }
   renderProjectList();
 }
@@ -1068,13 +1073,8 @@ function openScanner(){
   html5QrScanner.start(
     { facingMode: "environment" },
     {
-      fps: 15,
-      qrbox: function(viewfinderWidth, viewfinderHeight){
-        const w = Math.floor(Math.min(viewfinderWidth, viewfinderHeight * 2.2) * 0.85);
-        return { width: Math.max(220, Math.min(360, w)), height: Math.max(110, Math.min(180, Math.floor(w*0.5))) };
-      },
-      videoConstraints: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
-      experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+      fps: 10,
+      qrbox: { width: 250, height: 150 },
     },
     (decodedText)=>{
       scannerGotDecode = true;
@@ -1082,7 +1082,6 @@ function openScanner(){
       flagFieldOk('meterNo');
       checkDispatcherMatch();
       checkDuplicateLive();
-      captureFrameFromScanner();
       closeScanner();
     },
     ()=>{ }
@@ -1116,24 +1115,13 @@ function closeScanner(){
   torchOn = false;
   if(html5QrScanner){ html5QrScanner.stop().then(()=>html5QrScanner.clear()).catch(()=>{}); html5QrScanner = null; }
 }
-function captureFrameFromScanner(){
-  const video = document.querySelector('#qr-reader video');
-  if(!video || !video.videoWidth) return;
-  const canvas = document.getElementById('camCanvas');
-  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-  readingPhotoData = dataUrl;
-  document.getElementById('readingThumb').innerHTML = `<div class="thumb"><img src="${dataUrl}"></div>`;
-  tryOcr(dataUrl);
-}
 
 /* ============================================================
    CAMERA CAPTURE
    ============================================================ */
 function openCamera(mode){
   currentCameraMode = mode;
-  document.getElementById('cameraModalTitle').textContent = mode==='reading' ? 'Re-capture Meter Reading' : 'Capture Condition Photo';
+  document.getElementById('cameraModalTitle').textContent = mode==='reading' ? 'Capture Meter Reading' : 'Capture Condition Photo';
   document.getElementById('cameraModal').classList.add('open');
   navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width:{ideal:1920}, height:{ideal:1080} } })
     .then(stream=>{ cameraStream = stream; document.getElementById('camVideo').srcObject = stream; })
@@ -1380,8 +1368,8 @@ function saveRecord(){
 }
 
 function syncToSheet(p, rec){
-  if(!p.appsScriptUrl){ rec.cloudStatus = 'Not configured'; return; }
-  const payload = { sr:rec.sr, meterNo:rec.meterNo, meterType:rec.meterType, reading:rec.reading,
+  if(!p.appsScriptUrl || !p.sheetId){ rec.cloudStatus = 'Not configured'; return; }
+  const payload = { sheetId:p.sheetId, sr:rec.sr, meterNo:rec.meterNo, meterType:rec.meterType, reading:rec.reading,
     physicalCondition:rec.physicalCondition, documentsStatus:rec.documentsStatus,
     dispatcherMatch:rec.dispatcherMatch, project:p.name, device:p.device, remarks:rec.remarks };
   fetch(p.appsScriptUrl, { method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify(payload) })
