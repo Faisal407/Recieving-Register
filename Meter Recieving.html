@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>DMIS Receiving Inspection — Field Test</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --ink:#151c26; --steel:#22384a; --steel-2:#2f4d63; --steel-light:#5c86a3;
+    --paper:#eef1f3; --card:#ffffff; --line:#d7dde2; --amber:#c9822a;
+    --red-digit:#a4231c; --red-digit-2:#c22f26; --ok:#2e7d4f; --warn:#b3401a; --muted:#6b7a86;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--paper); color:var(--ink); font-family:'Inter',system-ui,sans-serif; padding-bottom:96px; -webkit-tap-highlight-color: transparent;}
+  h1,h2,h3{font-family:'Barlow Condensed',sans-serif; letter-spacing:.01em; margin:0;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+
+  header.topbar{position:sticky; top:0; z-index:40; background:var(--steel); color:#fff; padding:14px 16px 12px; box-shadow:0 2px 10px rgba(0,0,0,.18);}
+  header.topbar .row1{display:flex; align-items:center; justify-content:space-between; gap:10px;}
+  header.topbar h1{font-size:22px; font-weight:700; line-height:1;}
+  header.topbar .tag{font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#b9cbd7; margin-top:2px;}
+  .pill-btn{background:var(--amber); color:#241407; border:none; border-radius:999px; font-family:'Inter',sans-serif; font-weight:700; font-size:12.5px; padding:9px 14px; white-space:nowrap; cursor:pointer;}
+  .pill-btn.secondary{background:transparent; color:#fff; border:1.5px solid rgba(255,255,255,.45);}
+  .pill-btn:active{transform:scale(.97);}
+
+  .main-tabs{display:flex; gap:8px; margin-top:12px;}
+  .main-tab{flex:1; padding:10px 8px; border-radius:9px; border:1.5px solid rgba(255,255,255,.25); background:rgba(255,255,255,.06); color:#dbe6ec; font-weight:700; font-size:13px; cursor:pointer;}
+  .main-tab.active{background:var(--amber); color:#241407; border-color:var(--amber);}
+
+  main{max-width:640px; margin:0 auto; padding:16px;}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:14px;}
+  .card h2{font-size:19px; color:var(--steel); display:flex; align-items:center; gap:8px;}
+  .card h2 .num{display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:6px; background:var(--steel); color:#fff; font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:700;}
+  .subtext{font-size:12.5px; color:var(--muted); margin-top:2px; margin-bottom:12px;}
+
+  label.field-label{display:block; font-size:12px; font-weight:600; color:var(--steel-2); text-transform:uppercase; letter-spacing:.04em; margin:12px 0 5px;}
+  input[type=text], input[type=number], select, textarea{
+    width:100%; padding:11px 12px; font-size:15px; border:1.5px solid var(--line); border-radius:9px;
+    background:#fbfcfd; color:var(--ink); font-family:'Inter',sans-serif; transition:background .15s, border-color .15s;
+  }
+  input:focus, select:focus, textarea:focus{outline:2px solid var(--steel-light); border-color:var(--steel-light);}
+
+  @keyframes blinkRed{0%,100%{background:#ffffff; border-color:var(--warn);} 50%{background:#fde3e0; border-color:#7a1d10;}}
+  .field-blink{animation: blinkRed 1s infinite; border-width:2px;}
+  .field-ok{background:#eaf7ee !important; border-color:var(--ok) !important; border-width:2px;}
+
+  .row{display:flex; gap:8px;}
+  .row > *{flex:1;}
+
+  .btn{display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:11px 14px; border-radius:9px; border:1.5px solid var(--steel); background:var(--steel); color:#fff; font-weight:600; font-size:14px; cursor:pointer; width:100%; margin-top:8px;}
+  .btn.outline{background:#fff; color:var(--steel);}
+  .btn.amber{background:var(--amber); border-color:var(--amber); color:#241407;}
+  .btn:active{transform:scale(.985);}
+  .btn:disabled{opacity:.45; cursor:not-allowed;}
+
+  .chip-toggle{display:inline-flex; border-radius:999px; overflow:hidden; border:1.5px solid var(--line); flex:0 0 auto;}
+  .chip-toggle button{border:none; background:#fff; padding:7px 13px; font-size:12.5px; font-weight:700; cursor:pointer; color:var(--muted);}
+  .chip-toggle button.on-ok{background:var(--ok); color:#fff;}
+  .chip-toggle button.on-bad{background:var(--warn); color:#fff;}
+
+  .chip-grid{display:flex; flex-wrap:wrap; gap:8px; margin-top:6px;}
+  .chip-grid button{padding:10px 15px; border-radius:9px; border:1.5px solid var(--line); background:#fbfcfd; font-weight:700; font-size:13.5px; color:var(--steel-2); cursor:pointer;}
+  .chip-grid button.selected{background:var(--steel); color:#fff; border-color:var(--steel);}
+  .chip-grid button.manual-chip{border-style:dashed; color:var(--amber); border-color:var(--amber);}
+  .chip-grid button.manual-chip.selected{background:var(--amber); color:#241407; border-color:var(--amber);}
+
+  .cond-row{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 0; border-bottom:1px dashed var(--line);}
+  .cond-row:last-child{border-bottom:none;}
+  .cond-row .cond-label{font-size:14px; font-weight:600; color:var(--ink);}
+
+  .seal-block{border:1.5px solid var(--line); border-radius:10px; padding:10px 12px; margin-top:10px; background:#fbfcfd;}
+  .seal-block .cond-row{padding:4px 0; border-bottom:none;}
+  .seal-total{font-size:12.5px; color:var(--muted); margin-top:2px;}
+  .seal-found-wrap{margin-top:8px;}
+
+  .match-badge{display:inline-block; font-size:11.5px; font-weight:700; padding:4px 10px; border-radius:999px; margin-top:6px;}
+  .match-listed{background:#dcefe2; color:var(--ok);}
+  .match-fresh{background:#fbe6d6; color:var(--amber);}
+  .match-none{background:#eee; color:var(--muted);}
+  .dup-warning{background:#fde3e0; color:var(--warn); border:1px solid #f0aca0; font-size:12.5px; font-weight:700; padding:8px 10px; border-radius:8px; margin-top:8px;}
+
+  .readout{display:flex; border-radius:8px; overflow:hidden; margin-top:10px; border:2px solid var(--ink); font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:20px;}
+  .readout .whole{background:#111; color:#fff; padding:10px 6px; letter-spacing:4px; flex:1; text-align:center;}
+  .readout .frac{background:var(--red-digit-2); color:#fff; padding:10px 6px; letter-spacing:4px; flex:0 0 34%; text-align:center;}
+  .readout-unit{font-size:11px; color:var(--muted); text-align:right; margin-top:4px;}
+
+  video.cam-preview{width:100%; border-radius:10px; background:#000; display:block;}
+  canvas{display:none;}
+  .thumb-row{display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;}
+  .thumb{width:64px; height:64px; border-radius:8px; overflow:hidden; border:1.5px solid var(--line);}
+  .thumb img{width:100%; height:100%; object-fit:cover;}
+
+  .modal-backdrop{position:fixed; inset:0; background:rgba(10,15,20,.86); z-index:100; display:none; align-items:center; justify-content:center; padding:16px;}
+  .modal-backdrop.open{display:flex;}
+  .modal-box{background:#fff; border-radius:14px; padding:16px; width:100%; max-width:480px; max-height:90vh; overflow-y:auto;}
+  .modal-box h3{color:var(--steel); font-size:19px; margin-bottom:8px;}
+  #qr-reader{border-radius:10px; overflow:hidden;}
+
+  .ocr-status{font-size:12.5px; color:var(--muted); margin-top:6px; min-height:16px;}
+
+  .doc-grid{display:grid; grid-template-columns:1fr auto; align-items:center; gap:10px 8px;}
+  .doc-grid .q{font-size:14px;}
+
+  footer.savebar{position:fixed; bottom:0; left:0; right:0; z-index:40; background:#fff; border-top:1.5px solid var(--line); padding:10px 16px calc(10px + env(safe-area-inset-bottom)); display:flex; gap:10px; box-shadow:0 -4px 14px rgba(0,0,0,.06);}
+  footer.savebar .btn{margin-top:0;}
+
+  table.records{width:100%; border-collapse:collapse; font-size:12.5px;}
+  table.records th, table.records td{border:1px solid var(--line); padding:7px 6px; text-align:left; vertical-align:top;}
+  table.records th{background:var(--paper); color:var(--steel-2); font-weight:700; font-size:11px; text-transform:uppercase;}
+  .table-wrap{overflow-x:auto;}
+
+  .mini-record{display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px dashed var(--line); font-size:13px;}
+  .mini-record:last-child{border-bottom:none;}
+  .mini-record .mno{font-family:'IBM Plex Mono',monospace; font-weight:700;}
+  .mini-record .mmeta{color:var(--muted); font-size:11.5px;}
+
+  .banner{background:#fff4e6; border:1px solid #f0c98a; color:#7a4a10; border-radius:10px; padding:10px 12px; font-size:12.5px; margin-bottom:14px;}
+  .banner b{color:#5c3608;}
+  .banner.info{background:#eaf1f6; border-color:#b9cbd7; color:#274252;}
+  .banner.info b{color:#122431;}
+
+  .code-box{display:flex; align-items:center; justify-content:space-between; background:var(--paper); border:1.5px dashed var(--steel-light); border-radius:9px; padding:10px 12px; margin-top:10px;}
+  .code-box .code{font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:18px; color:var(--steel);}
+</style>
+</head>
+<body>
+
+<div class="modal-backdrop open" id="projectSetupModal">
+  <div class="modal-box">
+    <h3>Start Inspection Session</h3>
+    <div class="subtext">Every record in this session will be tagged with these two fields.</div>
+    <label class="field-label">Project Name</label>
+    <input type="text" id="projName" placeholder="e.g. DMIS Receiving — Batch 14">
+    <label class="field-label">Device Name</label>
+    <input type="text" id="deviceName" placeholder="e.g. Inspector-1 Phone">
+    <button class="btn amber" onclick="startProject()">Start Inspection Session</button>
+
+    <div class="banner info" style="margin-top:14px;">
+      <b>About multi-device sharing &amp; auto cloud export:</b> this offline test page can't sync live between
+      phones or auto-create a Google Sheet / OneDrive file by itself — that needs a real backend with account sign-in
+      (Google/Microsoft OAuth), which is a Phase-2 build, not something a static page can safely do.
+      For now: give every device <b>the same Project Name</b>, each device exports its own Excel tagged with its
+      Device Name, and the files get merged. This also generates a shareable Project Code below to help keep them lined up.
+    </div>
+  </div>
+</div>
+
+<header class="topbar">
+  <div class="row1">
+    <div>
+      <h1>DMIS Receiving Inspection</h1>
+      <div class="tag" id="projTag">Field test prototype · SNGPL Faisalabad-D</div>
+    </div>
+    <button class="pill-btn secondary" onclick="showTab('records')">All Records (<span id="recCount">0</span>)</button>
+  </div>
+  <div class="main-tabs">
+    <button class="main-tab active" id="tabBtnInspect" onclick="showTab('inspect')">📋 Inspection</button>
+    <button class="main-tab" id="tabBtnRecords" onclick="showTab('records')">🗂 All Records</button>
+  </div>
+</header>
+
+<main>
+
+<div id="tabInspect">
+
+  <div class="banner">
+    <b>Field test build.</b> Data lives only in this browser tab — it is <b>not</b> saved automatically.
+    Export from the <b>All Records</b> tab after each batch so nothing is lost if the page closes.
+  </div>
+
+  <div class="card">
+    <h2><span class="num">0</span> Dispatcher List (optional)</h2>
+    <div class="subtext">Upload the dispatcher's Excel/CSV of expected meter numbers, so each scan is checked against it automatically.</div>
+    <input type="file" id="dispatcherFile" accept=".csv,.xlsx,.xls">
+    <div id="dispatcherStatus" class="subtext" style="margin-top:8px;"></div>
+  </div>
+
+  <div class="card" id="section-1">
+    <h2><span class="num">1</span> Meter Identity</h2>
+    <div class="subtext">Scan the meter's barcode — this also auto-captures the reading from the same frame. Type manually if the barcode won't read.</div>
+    <div class="row">
+      <button class="btn amber" onclick="openScanner()">📷 Scan Barcode (+ auto-capture reading)</button>
+    </div>
+    <label class="field-label">Meter No.</label>
+    <input type="text" id="meterNo" placeholder="e.g. A7885606" oninput="onMeterNoInput()">
+    <div id="matchBadge"></div>
+    <div id="dupWarning"></div>
+  </div>
+
+  <div class="card" id="section-2">
+    <h2><span class="num">2</span> Classification</h2>
+    <label class="field-label">Category</label>
+    <div class="chip-grid" id="categoryChips"></div>
+
+    <div id="aliasWrap" style="display:none;">
+      <label class="field-label">Make / Model (Alias)</label>
+      <div class="chip-grid" id="aliasChips"></div>
+      <div id="aliasManualWrap" style="display:none; margin-top:8px;">
+        <input type="text" id="aliasManual" placeholder="Type the make/model not in the list" oninput="onAliasManualInput()">
+      </div>
+    </div>
+
+    <div id="variantWrap" style="display:none;">
+      <label class="field-label">Variant</label>
+      <div class="chip-grid" id="variantChips"></div>
+    </div>
+  </div>
+
+  <div class="card" id="section-3">
+    <h2><span class="num">3</span> Meter Reading</h2>
+    <div class="subtext">Auto-captured when you scanned the barcode in Step 1. Re-capture below only if the digits weren't clear.</div>
+    <button class="btn outline" onclick="openCamera('reading')">📷 Re-capture Reading</button>
+    <div class="ocr-status" id="ocrStatus"></div>
+    <div class="thumb-row" id="readingThumb"></div>
+    <label class="field-label">Whole m³ digits</label>
+    <input type="text" id="readWhole" class="mono" placeholder="e.g. 01273" inputmode="numeric" pattern="[0-9]*">
+    <label class="field-label">Fraction digits (red dial) — optional, defaults to 000</label>
+    <input type="text" id="readFrac" class="mono" placeholder="e.g. 547 (leave blank for 000)" inputmode="numeric" pattern="[0-9]*">
+    <div class="readout">
+      <div class="whole" id="rdWhole">-----</div>
+      <div class="frac" id="rdFrac">000</div>
+    </div>
+    <div class="readout-unit">m³ · black = whole units, red = sub-division</div>
+  </div>
+
+  <div class="card" id="section-4">
+    <h2><span class="num">4</span> Physical Condition</h2>
+    <div class="subtext">Toggles are auto-aligned; seal fields auto-fill totals from the reference list selected in Step 2.</div>
+
+    <label class="field-label">Index / Counter</label>
+    <div class="cond-row">
+      <span class="cond-label">Counter face</span>
+      <div class="chip-toggle" id="tgCounterDirt"><button data-val="clean" class="on-ok">Clean</button><button data-val="dirty">Dirty</button></div>
+    </div>
+    <div class="cond-row">
+      <span class="cond-label">Counter glass</span>
+      <div class="chip-toggle" id="tgGlass"><button data-val="ok" class="on-ok">OK</button><button data-val="damaged">Damaged</button></div>
+    </div>
+
+    <label class="field-label">Meter Body</label>
+    <div class="cond-row">
+      <span class="cond-label">Body condition</span>
+      <div class="chip-toggle" id="tgBody"><button data-val="ok" class="on-ok">OK</button><button data-val="damaged">Damaged</button></div>
+    </div>
+
+    <label class="field-label">Seal Status</label>
+    <div id="sealChecklist"></div>
+
+    <button class="btn outline" onclick="openCamera('condition')">📷 Add Condition Photo (optional)</button>
+    <div class="thumb-row" id="conditionThumb"></div>
+  </div>
+
+  <div class="card" id="section-5">
+    <h2><span class="num">5</span> Dispatch Documentation</h2>
+    <div class="subtext">Cross-check what's written on the dispatch/OGRA paperwork against your own observation above.</div>
+    <div class="doc-grid">
+      <div class="q">Seal status matches document</div>
+      <div class="chip-toggle" id="docSealMatch"><button data-val="yes" class="on-ok">Yes</button><button data-val="no" class="on-bad">No</button></div>
+
+      <div class="q">Damage mentioned on document (if any)</div>
+      <div class="chip-toggle" id="docDamageMentioned"><button data-val="yes" class="on-ok">Yes</button><button data-val="no" class="on-bad">No</button></div>
+
+      <div class="q">Executive sign present</div>
+      <div class="chip-toggle" id="docExecSign"><button data-val="yes" class="on-ok">Yes</button><button data-val="no" class="on-bad">No</button></div>
+
+      <div class="q">Team sign present</div>
+      <div class="chip-toggle" id="docTeamSign"><button data-val="yes" class="on-ok">Yes</button><button data-val="no" class="on-bad">No</button></div>
+
+      <div class="q">Consumer sign present</div>
+      <div class="chip-toggle" id="docConsumerSign"><button data-val="yes" class="on-ok">Yes</button><button data-val="no" class="on-bad">No</button></div>
+
+      <div class="q">Consumer name mentioned</div>
+      <div class="chip-toggle" id="docConsumerName"><button data-val="yes" class="on-ok">Yes</button><button data-val="no" class="on-bad">No</button></div>
+
+      <div class="q">If refused — OGRA refusal clause mentioned</div>
+      <div class="chip-toggle" id="docRefusalClause"><button data-val="yes" class="on-ok">Yes</button><button data-val="no" class="on-bad">No</button><button data-val="na">N/A</button></div>
+
+      <div class="q">Consumer wants inspection in his presence</div>
+      <div class="chip-toggle" id="docWantsPresence"><button data-val="yes" class="on-ok">Yes</button><button data-val="no" class="on-bad">No</button><button data-val="na">N/A</button></div>
+    </div>
+    <label class="field-label">Remarks (optional)</label>
+    <textarea id="remarks" rows="2" placeholder="Any additional notes for this meter…"></textarea>
+  </div>
+
+  <div class="card">
+    <h2>Recent Entries</h2>
+    <div class="subtext">Last 3 saved this session. Full list is under the <b>All Records</b> tab.</div>
+    <div id="recentMini" style="font-size:13px; color:var(--muted);">No entries yet.</div>
+  </div>
+
+</div>
+
+<div id="tabRecords" style="display:none;">
+  <div class="card">
+    <h2>All Recorded Entries</h2>
+    <div class="subtext" id="recordsMeta">0 records this session.</div>
+    <div class="row">
+      <button class="btn amber" onclick="exportExcel()">⬇ Export Excel</button>
+      <button class="btn outline" onclick="openCloudInfo()">☁ Auto-create Google Sheet / OneDrive</button>
+    </div>
+    <div class="table-wrap" style="margin-top:12px;">
+      <table class="records">
+        <thead>
+          <tr><th>Sr#</th><th>Meter No.</th><th>Meter Type</th><th>Reading</th><th>Physical Condition</th><th>Documents Status</th><th>Device</th><th></th></tr>
+        </thead>
+        <tbody id="recordsBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<footer class="savebar" id="savebarInspect">
+  <button class="btn outline" onclick="resetForm(true)" style="flex:0 0 90px;">Clear</button>
+  <button class="btn amber" onclick="saveRecord()">💾 Save Entry</button>
+</footer>
+<footer class="savebar" id="savebarRecords" style="display:none;">
+  <button class="btn outline" onclick="showTab('inspect')" style="flex:0 0 110px;">← New Entry</button>
+  <button class="btn amber" onclick="exportExcel()">⬇ Export Excel</button>
+</footer>
+
+<div class="modal-backdrop" id="scannerModal">
+  <div class="modal-box">
+    <h3>Scan Meter Barcode</h3>
+    <div id="qr-reader"></div>
+    <button class="btn outline" onclick="cancelScanner()">Cancel</button>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="cameraModal">
+  <div class="modal-box">
+    <h3 id="cameraModalTitle">Capture Photo</h3>
+    <video id="camVideo" class="cam-preview" autoplay playsinline></video>
+    <canvas id="camCanvas"></canvas>
+    <div class="row" style="margin-top:10px;">
+      <button class="btn amber" onclick="capturePhoto()">Capture</button>
+      <button class="btn outline" onclick="closeCamera()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="cloudInfoModal">
+  <div class="modal-box">
+    <h3>Auto-create Google Sheet / OneDrive</h3>
+    <div class="subtext">This is not something a static offline page can do safely, and here's exactly why:</div>
+    <p style="font-size:13.5px; line-height:1.5;">
+      Creating a file directly in your Google Drive or OneDrive requires the page to sign in as <b>you</b>
+      via Google/Microsoft's official login (OAuth) and hold a server-side app registration — that's account
+      infrastructure, not something to embed in a client-side test page. Doing it insecurely (e.g. hardcoding
+      access) would risk your account credentials.
+    </p>
+    <p style="font-size:13.5px; line-height:1.5;">
+      <b>What this prototype does instead:</b> Export Excel downloads a real .xlsx you can upload to Drive/OneDrive
+      manually in a few seconds.<br><b>What the real app will do:</b> once we build the Flutter app, it'll use a
+      proper Google Sheets API service account (or Microsoft Graph for OneDrive) to push each record automatically —
+      that's a backend feature for the next build phase, not this test page.
+    </p>
+    <button class="btn amber" onclick="closeCloudInfo()">Got it</button>
+  </div>
+</div>
+
+<script>
+const METER_TYPES = [
+  {category:'G1.6', alias:'RE', variant:'Old', name:'Remus G1.6 old', indexSeals:'02 PC Seals', bodySeals:'01 Upper body,01 Front body,01 Back body'},
+  {category:'G1.6', alias:'RE', variant:'New', name:'Remus G1.6 New', indexSeals:'02 PC Seals', bodySeals:'02 Upper body,03 Front body,03 Back body'},
+  {category:'G1.6', alias:'ZA', variant:'', name:'Zenner-G1.6', indexSeals:'02 PC Seals', bodySeals:'02 Upper body,02 Front body,02 Back body'},
+  {category:'G1.6', alias:'DD', variant:'', name:'Dandong Dongfa G1.6', indexSeals:'02 PC Seals', bodySeals:'02 Upper body,02 Front body,02 Back body'},
+  {category:'G1.6', alias:'CT', variant:'', name:'Chint-G1.6', indexSeals:'04 PC Seals', bodySeals:'02 Upper body,02 Front body,02 Back body'},
+  {category:'G1.6', alias:'QM', variant:'', name:'Qianwei G-1.6', indexSeals:'02 PC Seals', bodySeals:'02 Body seals'},
+  {category:'G1.6', alias:'BK', variant:'', name:'Elster-G1.6', indexSeals:'02 PC Seals', bodySeals:'02 Body seals'},
+  {category:'G1.6', alias:'DIT', variant:'', name:'Dandong Iwatani Toyo G1.6A (unconfirmed — verify with team)', indexSeals:'02 PC Seals', bodySeals:'02 Body seals'},
+  {category:'G2.5', alias:'BK', variant:'', name:'Elster-G2.5', indexSeals:'02 PC Seals', bodySeals:'02 Body seals'},
+  {category:'G4', alias:'GN', variant:'REP', name:'SSG-G4 REP', indexSeals:'02 PC Seals + 02 Rivet Seals', bodySeals:'01 Bit wire seal'},
+  {category:'G4', alias:'GN', variant:'NEW', name:'SSG-G4 NEW', indexSeals:'02 PC Seals + 02 Rivet Seals', bodySeals:'02 Body seals'},
+  {category:'G4', alias:'BK', variant:'', name:'Elster-G4', indexSeals:'02 PC Seals', bodySeals:'02 Body seals'},
+  {category:'G4', alias:'ZA', variant:'', name:'Zenner-G4', indexSeals:'02 PC Seals', bodySeals:'02 Body seals'},
+  {category:'G4', alias:'CT', variant:'', name:'Chint-G4', indexSeals:'02 PC Seals', bodySeals:'05 Body seals'},
+  {category:'G4', alias:'CU', variant:'', name:'Sensus-G4', indexSeals:'02 Special PC Seals', bodySeals:'02 Body seals'},
+  {category:'G4', alias:'DS', variant:'', name:'Daesung-G4', indexSeals:'03 Seals', bodySeals:'02 Upper body,02 Front body,02 Back body'},
+  {category:'G-6', alias:'CU', variant:'', name:'Sensus-G6', indexSeals:'02 Special PC Seals', bodySeals:'02 Body seals'},
+  {category:'G-6', alias:'BK', variant:'', name:'Elster-G6', indexSeals:'02 PC Seals', bodySeals:'02 Body seals'},
+];
+
+let dispatcherSet = new Set();
+let records = [];
+let srCounter = 1;
+let currentCameraMode = null;
+let cameraStream = null;
+let readingPhotoData = null;
+let conditionPhotoData = null;
+let html5QrScanner = null;
+let scannerGotDecode = false;
+
+let selectedCategory='', selectedAlias='', selectedVariant='', aliasIsManual=false;
+let sealSummary = { index:{status:'intact', total:0, found:''}, body:{status:'intact', total:0, found:''} };
+
+let projectName='', deviceName='', projectCode='';
+
+function genCode(){
+  return Math.random().toString(36).slice(2,6).toUpperCase() + '-' + Math.floor(1000+Math.random()*9000);
+}
+function startProject(){
+  const p = document.getElementById('projName').value.trim();
+  const d = document.getElementById('deviceName').value.trim();
+  if(!p || !d){ alert('Please enter both Project Name and Device Name.'); return; }
+  projectName = p; deviceName = d; projectCode = genCode();
+  document.getElementById('projTag').textContent = `${projectName} · ${deviceName} · Code ${projectCode}`;
+  document.getElementById('projectSetupModal').classList.remove('open');
+}
+
+function showTab(name){
+  const isInspect = name==='inspect';
+  document.getElementById('tabInspect').style.display = isInspect ? 'block' : 'none';
+  document.getElementById('tabRecords').style.display = isInspect ? 'none' : 'block';
+  document.getElementById('tabBtnInspect').classList.toggle('active', isInspect);
+  document.getElementById('tabBtnRecords').classList.toggle('active', !isInspect);
+  document.getElementById('savebarInspect').style.display = isInspect ? 'flex' : 'none';
+  document.getElementById('savebarRecords').style.display = isInspect ? 'none' : 'flex';
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function playBeep(freq, duration){
+  try{
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.frequency.value = freq || 880;
+    osc.type = 'square';
+    osc.connect(gain); gain.connect(ctx.destination);
+    gain.gain.setValueAtTime(0.16, ctx.currentTime);
+    osc.start();
+    osc.stop(ctx.currentTime + (duration||180)/1000);
+  }catch(e){ }
+}
+
+function flagFieldNeeded(id){
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.classList.remove('field-ok');
+  el.classList.add('field-blink');
+}
+function flagFieldOk(id){
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.classList.remove('field-blink');
+  el.classList.add('field-ok');
+}
+function clearFieldFlags(id){
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.classList.remove('field-blink','field-ok');
+}
+
+function initCategories(){
+  const cats = [...new Set(METER_TYPES.map(m=>m.category))];
+  document.getElementById('categoryChips').innerHTML = cats.map(c=>
+    `<button type="button" onclick="selectCategory('${c}')">${c}</button>`
+  ).join('');
+}
+initCategories();
+
+function selectCategory(cat){
+  selectedCategory = cat; selectedAlias=''; selectedVariant=''; aliasIsManual=false;
+  document.querySelectorAll('#categoryChips button').forEach(b=>b.classList.toggle('selected', b.textContent===cat));
+  document.getElementById('aliasWrap').style.display = 'block';
+  document.getElementById('aliasManualWrap').style.display = 'none';
+  document.getElementById('aliasManual').value = '';
+  document.getElementById('variantWrap').style.display = 'none';
+
+  const aliases = [...new Set(METER_TYPES.filter(m=>m.category===cat).map(m=>m.alias))];
+  document.getElementById('aliasChips').innerHTML = aliases.map(a=>
+    `<button type="button" onclick="selectAlias('${a}')">${a}</button>`
+  ).join('') + `<button type="button" class="manual-chip" onclick="selectAlias('__manual__')">✎ Not in list — type manually</button>`;
+  renderSealChecklist(null);
+}
+
+function selectAlias(alias){
+  selectedAlias = alias; selectedVariant = '';
+  document.querySelectorAll('#aliasChips button').forEach(b=>{
+    const isThis = (alias==='__manual__') ? b.classList.contains('manual-chip') : b.textContent===alias;
+    b.classList.toggle('selected', isThis);
+  });
+  if(alias === '__manual__'){
+    aliasIsManual = true;
+    document.getElementById('aliasManualWrap').style.display = 'block';
+    document.getElementById('variantWrap').style.display = 'none';
+    renderSealChecklist(null, true);
+    return;
+  }
+  aliasIsManual = false;
+  document.getElementById('aliasManualWrap').style.display = 'none';
+  const variantWrap = document.getElementById('variantWrap');
+  const matches = METER_TYPES.filter(m=>m.category===selectedCategory && m.alias===alias);
+  if(matches.length > 1){
+    variantWrap.style.display='block';
+    document.getElementById('variantChips').innerHTML = matches.map(m=>
+      `<button type="button" onclick="selectVariant('${m.variant}')">${m.variant || '(default)'} — ${m.name}</button>`
+    ).join('');
+    selectVariant(matches[0].variant);
+  } else {
+    variantWrap.style.display='none';
+    renderSealChecklist(matches[0] || null);
+  }
+}
+
+function selectVariant(variant){
+  selectedVariant = variant;
+  document.querySelectorAll('#variantChips button').forEach(b=>b.classList.toggle('selected', b.textContent.startsWith((variant||'(default)'))));
+  const m = METER_TYPES.find(x=>x.category===selectedCategory && x.alias===selectedAlias && x.variant===variant);
+  renderSealChecklist(m);
+}
+
+function onAliasManualInput(){ }
+
+function parseSealGroup(str){
+  const m = str.trim().match(/^(\d+)\s+(.*)$/);
+  if(m) return {count: parseInt(m[1],10), label:m[2]};
+  return {count:1, label:str.trim()};
+}
+function sumSeals(str){
+  if(!str) return 0;
+  let total = 0;
+  str.split(/[+,]/).forEach(s=>{ total += parseSealGroup(s).count; });
+  return total;
+}
+
+function renderSealChecklist(meterType, isManual){
+  const wrap = document.getElementById('sealChecklist');
+  sealSummary = { index:{status:'intact', total:0, found:''}, body:{status:'intact', total:0, found:''} };
+
+  if(isManual){
+    wrap.innerHTML = '<div style="color:var(--muted); font-size:13px;">Make/model entered manually — no reference seal count on file. Note seal count and status in Remarks (Step 5).</div>';
+    return;
+  }
+  if(!meterType){
+    wrap.innerHTML = '<div style="color:var(--muted); font-size:13px;">Select category &amp; make in Step 2 to load seal totals.</div>';
+    return;
+  }
+
+  sealSummary.index.total = sumSeals(meterType.indexSeals);
+  sealSummary.body.total = sumSeals(meterType.bodySeals);
+
+  wrap.innerHTML = `
+    <div class="seal-block">
+      <div class="cond-row">
+        <span class="cond-label">Index / Counter Seals</span>
+        <div class="chip-toggle" id="idxSealStatus">
+          <button data-val="intact" class="on-ok" onclick="setSealStatus('index','intact',this)">Intact</button>
+          <button data-val="missing" onclick="setSealStatus('index','missing',this)">Missing</button>
+        </div>
+      </div>
+      <div class="seal-total">Total on record: <b>${sealSummary.index.total}</b> (${meterType.indexSeals})</div>
+      <div class="seal-found-wrap" id="indexFoundWrap" style="display:none;">
+        <label class="field-label" style="margin-top:6px;">Seals Found / Total</label>
+        <input type="number" id="idxFound" inputmode="numeric" pattern="[0-9]*" min="0" max="${sealSummary.index.total}"
+          placeholder="0" oninput="sealSummary.index.found=this.value">
+      </div>
+    </div>
+    <div class="seal-block">
+      <div class="cond-row">
+        <span class="cond-label">Body Seals</span>
+        <div class="chip-toggle" id="bodySealStatus">
+          <button data-val="intact" class="on-ok" onclick="setSealStatus('body','intact',this)">Intact</button>
+          <button data-val="missing" onclick="setSealStatus('body','missing',this)">Missing</button>
+        </div>
+      </div>
+      <div class="seal-total">Total on record: <b>${sealSummary.body.total}</b> (${meterType.bodySeals})</div>
+      <div class="seal-found-wrap" id="bodyFoundWrap" style="display:none;">
+        <label class="field-label" style="margin-top:6px;">Seals Found / Total</label>
+        <input type="number" id="bodyFound" inputmode="numeric" pattern="[0-9]*" min="0" max="${sealSummary.body.total}"
+          placeholder="0" oninput="sealSummary.body.found=this.value">
+      </div>
+    </div>
+  `;
+}
+
+function setSealStatus(kind, val, btnEl){
+  const group = btnEl.parentElement;
+  [...group.children].forEach(b=>b.classList.remove('on-ok','on-bad'));
+  if(val==='intact') btnEl.classList.add('on-ok'); else btnEl.classList.add('on-bad');
+  sealSummary[kind].status = val;
+  const foundWrap = document.getElementById(kind==='index' ? 'indexFoundWrap' : 'bodyFoundWrap');
+  foundWrap.style.display = (val==='missing') ? 'block' : 'none';
+}
+
+function wireStaticToggles(){
+  document.querySelectorAll('.chip-toggle').forEach(group=>{
+    if(group.id==='idxSealStatus' || group.id==='bodySealStatus') return;
+    group.querySelectorAll('button').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        [...group.children].forEach(b=>b.classList.remove('on-ok','on-bad'));
+        const val = btn.getAttribute('data-val');
+        if(val==='ok'||val==='yes'||val==='clean') btn.classList.add('on-ok');
+        else if(val==='na'){ }
+        else btn.classList.add('on-bad');
+        group.setAttribute('data-current', val);
+      });
+    });
+    const pre = group.querySelector('.on-ok');
+    if(pre) group.setAttribute('data-current', pre.getAttribute('data-val'));
+  });
+}
+wireStaticToggles();
+function getToggleVal(id){
+  const g = document.getElementById(id);
+  return g ? (g.getAttribute('data-current') || '') : '';
+}
+
+document.getElementById('dispatcherFile').addEventListener('change', function(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  const statusEl = document.getElementById('dispatcherStatus');
+  const ext = file.name.split('.').pop().toLowerCase();
+  if(ext === 'csv'){
+    Papa.parse(file, {header:true, skipEmptyLines:true, complete: res=>{
+      loadDispatcherRows(res.data);
+      statusEl.textContent = `Loaded ${dispatcherSet.size} meter numbers from ${file.name}`;
+    }});
+  } else {
+    const reader = new FileReader();
+    reader.onload = evt=>{
+      const wb = XLSX.read(evt.target.result, {type:'array'});
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet);
+      loadDispatcherRows(rows);
+      statusEl.textContent = `Loaded ${dispatcherSet.size} meter numbers from ${file.name}`;
+    };
+    reader.readAsArrayBuffer(file);
+  }
+});
+function loadDispatcherRows(rows){
+  dispatcherSet = new Set();
+  rows.forEach(r=>{
+    let val = null;
+    for(const k in r){ if(/meter/i.test(k)){ val = r[k]; break; } }
+    if(val===null){ const keys=Object.keys(r); if(keys.length) val = r[keys[0]]; }
+    if(val!==null && val!==undefined && String(val).trim()!==''){ dispatcherSet.add(String(val).trim().toUpperCase()); }
+  });
+  checkDispatcherMatch();
+}
+function checkDispatcherMatch(){
+  const val = document.getElementById('meterNo').value.trim().toUpperCase();
+  const badge = document.getElementById('matchBadge');
+  if(!val){ badge.innerHTML=''; return; }
+  if(dispatcherSet.size===0){ badge.innerHTML = `<span class="match-badge match-none">No dispatcher list loaded</span>`; return; }
+  if(dispatcherSet.has(val)) badge.innerHTML = `<span class="match-badge match-listed">✓ Listed in dispatcher file</span>`;
+  else badge.innerHTML = `<span class="match-badge match-fresh">⚠ Not in list — Fresh/Unlisted</span>`;
+}
+
+function onMeterNoInput(){
+  checkDispatcherMatch();
+  const val = document.getElementById('meterNo').value.trim();
+  if(val.length>0){ flagFieldOk('meterNo'); } else { clearFieldFlags('meterNo'); }
+  checkDuplicateLive();
+}
+function isDuplicate(meterNo){
+  const v = meterNo.trim().toUpperCase();
+  return records.find(r=>r.meterNo.trim().toUpperCase()===v);
+}
+function checkDuplicateLive(){
+  const val = document.getElementById('meterNo').value.trim();
+  const dupEl = document.getElementById('dupWarning');
+  if(!val){ dupEl.innerHTML=''; return; }
+  const hit = isDuplicate(val);
+  if(hit){
+    dupEl.innerHTML = `<div class="dup-warning">⚠ DUPLICATE ENTRY — Meter No. ${val} was already recorded as Sr# ${hit.sr}.</div>`;
+    playBeep(300, 350);
+  } else {
+    dupEl.innerHTML = '';
+  }
+}
+
+function openScanner(){
+  scannerGotDecode = false;
+  document.getElementById('scannerModal').classList.add('open');
+  const formatsToSupport = [
+    Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
+    Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
+    Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.QR_CODE,
+  ];
+  html5QrScanner = new Html5Qrcode("qr-reader", { formatsToSupport, verbose:false });
+  html5QrScanner.start(
+    { facingMode: "environment" },
+    { fps: 10, qrbox: { width: 260, height: 120 } },
+    (decodedText)=>{
+      scannerGotDecode = true;
+      document.getElementById('meterNo').value = decodedText;
+      flagFieldOk('meterNo');
+      checkDispatcherMatch();
+      checkDuplicateLive();
+      captureFrameFromScanner();
+      closeScanner();
+    },
+    ()=>{ }
+  ).catch(err=>{
+    alert('Could not start camera for scanning: ' + err);
+    closeScanner();
+    if(!document.getElementById('meterNo').value.trim()) flagFieldNeeded('meterNo');
+  });
+}
+function cancelScanner(){
+  closeScanner();
+  if(!scannerGotDecode && !document.getElementById('meterNo').value.trim()){
+    flagFieldNeeded('meterNo');
+  }
+}
+function closeScanner(){
+  document.getElementById('scannerModal').classList.remove('open');
+  if(html5QrScanner){
+    html5QrScanner.stop().then(()=>html5QrScanner.clear()).catch(()=>{});
+    html5QrScanner = null;
+  }
+}
+function captureFrameFromScanner(){
+  const video = document.querySelector('#qr-reader video');
+  if(!video || !video.videoWidth) return;
+  const canvas = document.getElementById('camCanvas');
+  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+  readingPhotoData = dataUrl;
+  document.getElementById('readingThumb').innerHTML = `<div class="thumb"><img src="${dataUrl}"></div>`;
+  tryOcr(dataUrl);
+}
+
+function openCamera(mode){
+  currentCameraMode = mode;
+  document.getElementById('cameraModalTitle').textContent = mode==='reading' ? 'Re-capture Meter Reading' : 'Capture Condition Photo';
+  document.getElementById('cameraModal').classList.add('open');
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+    .then(stream=>{ cameraStream = stream; document.getElementById('camVideo').srcObject = stream; })
+    .catch(err=>{ alert('Camera access failed: ' + err); closeCamera(); });
+}
+function closeCamera(){
+  document.getElementById('cameraModal').classList.remove('open');
+  if(cameraStream){ cameraStream.getTracks().forEach(t=>t.stop()); cameraStream = null; }
+}
+function capturePhoto(){
+  const video = document.getElementById('camVideo');
+  const canvas = document.getElementById('camCanvas');
+  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video,0,0,canvas.width,canvas.height);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+  if(currentCameraMode === 'reading'){
+    readingPhotoData = dataUrl;
+    document.getElementById('readingThumb').innerHTML = `<div class="thumb"><img src="${dataUrl}"></div>`;
+    tryOcr(dataUrl);
+  } else {
+    conditionPhotoData = dataUrl;
+    document.getElementById('conditionThumb').innerHTML = `<div class="thumb"><img src="${dataUrl}"></div>`;
+  }
+  closeCamera();
+}
+
+let tesseractLoaded = false;
+function loadTesseract(cb){
+  if(tesseractLoaded){ cb(); return; }
+  const s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+  s.onload = ()=>{ tesseractLoaded = true; cb(); };
+  s.onerror = ()=>{ document.getElementById('ocrStatus').textContent = 'Could not load OCR engine — enter reading manually.'; flagFieldNeeded('readWhole'); };
+  document.head.appendChild(s);
+}
+function tryOcr(dataUrl){
+  const statusEl = document.getElementById('ocrStatus');
+  statusEl.textContent = 'Loading OCR engine…';
+  loadTesseract(()=>{
+    statusEl.textContent = 'Reading digits… this can take a few seconds.';
+    Tesseract.recognize(dataUrl, 'eng', { tessedit_char_whitelist: '0123456789' }).then(({data:{text}})=>{
+      const digitsOnly = (text || '').replace(/[^0-9]/g,'');
+      if(digitsOnly.length >= 5){
+        const whole = digitsOnly.slice(0, digitsOnly.length-3);
+        const frac = digitsOnly.slice(-3);
+        document.getElementById('readWhole').value = whole;
+        document.getElementById('readFrac').value = frac;
+        updateReadout();
+        flagFieldOk('readWhole'); flagFieldOk('readFrac');
+        statusEl.textContent = `OCR suggestion: ${whole}.${frac} — please verify against the photo before saving.`;
+      } else {
+        flagFieldNeeded('readWhole');
+        statusEl.textContent = 'OCR could not confidently read the digits — please enter manually.';
+      }
+    }).catch(()=>{
+      flagFieldNeeded('readWhole');
+      statusEl.textContent = 'OCR failed — please enter the reading manually.';
+    });
+  });
+}
+function updateReadout(){
+  const w = document.getElementById('readWhole').value;
+  const f = document.getElementById('readFrac').value;
+  document.getElementById('rdWhole').textContent = (w && w.length) ? w.padStart(5,'0').slice(-5) : '-----';
+  document.getElementById('rdFrac').textContent = (f && f.length) ? f.padStart(3,'0').slice(-3) : '000';
+}
+document.getElementById('readWhole').addEventListener('input', function(){
+  updateReadout();
+  if(this.value.trim().length>0) flagFieldOk('readWhole'); else clearFieldFlags('readWhole');
+});
+document.getElementById('readFrac').addEventListener('input', function(){
+  updateReadout();
+  clearFieldFlags('readFrac');
+});
+
+function summarizeCondition(){
+  const dirt = getToggleVal('tgCounterDirt') || 'clean';
+  const glass = getToggleVal('tgGlass') || 'ok';
+  const body = getToggleVal('tgBody') || 'ok';
+  const idx = sealSummary.index, bd = sealSummary.body;
+  const idxStr = idx.total ? (idx.status==='missing' ? `Index Seals: ${idx.found||'0'}/${idx.total} found (MISSING)` : `Index Seals: ${idx.total}/${idx.total} intact`) : 'Index Seals: N/A';
+  const bdStr = bd.total ? (bd.status==='missing' ? `Body Seals: ${bd.found||'0'}/${bd.total} found (MISSING)` : `Body Seals: ${bd.total}/${bd.total} intact`) : 'Body Seals: N/A';
+  return `Counter:${dirt}; Glass:${glass}; Body:${body}; ${idxStr}; ${bdStr}`;
+}
+function summarizeDocs(){
+  const parts = [
+    ['SealMatch', getToggleVal('docSealMatch')], ['DamageMentioned', getToggleVal('docDamageMentioned')],
+    ['ExecSign', getToggleVal('docExecSign')], ['TeamSign', getToggleVal('docTeamSign')],
+    ['ConsumerSign', getToggleVal('docConsumerSign')], ['ConsumerName', getToggleVal('docConsumerName')],
+    ['RefusalClause', getToggleVal('docRefusalClause')], ['WantsPresence', getToggleVal('docWantsPresence')],
+  ];
+  return parts.map(([k,v])=>`${k}:${v||'-'}`).join('; ');
+}
+
+function saveRecord(){
+  const meterNo = document.getElementById('meterNo').value.trim();
+  if(!meterNo){ alert('Please enter or scan a Meter No. before saving.'); flagFieldNeeded('meterNo'); return; }
+
+  const existing = isDuplicate(meterNo);
+  if(existing){
+    playBeep(300,350);
+    const proceed = confirm(`DUPLICATE ENTRY\n\nMeter No. ${meterNo} was already recorded as Sr# ${existing.sr}.\n\nSave anyway as a new entry?`);
+    if(!proceed) return;
+  }
+
+  const cat = selectedCategory;
+  const alias = aliasIsManual ? (document.getElementById('aliasManual').value.trim() || '(manual — blank)') : selectedAlias;
+  const variant = aliasIsManual ? '' : selectedVariant;
+  const meterType = `${cat || '-'} / ${alias || '-'}${variant ? ' ('+variant+')' : ''}${aliasIsManual ? ' [manual entry]' : ''}`;
+
+  const whole = document.getElementById('readWhole').value || '';
+  const frac = document.getElementById('readFrac').value || '000';
+  const reading = whole ? `${whole}.${frac} m³` : '';
+
+  const rec = {
+    sr: srCounter++, meterNo, meterType, reading,
+    physicalCondition: summarizeCondition(),
+    documentsStatus: summarizeDocs(),
+    remarks: document.getElementById('remarks').value.trim(),
+    dispatcherMatch: dispatcherSet.size ? (dispatcherSet.has(meterNo.toUpperCase()) ? 'Listed' : 'Fresh/Unlisted') : 'N/A',
+    project: projectName, device: deviceName, projectCode: projectCode,
+  };
+  records.push(rec);
+  renderRecords();
+  renderRecentMini();
+  resetForm(true);
+  playBeep(1200,120);
+}
+
+function renderRecentMini(){
+  const wrap = document.getElementById('recentMini');
+  if(records.length===0){ wrap.innerHTML = 'No entries yet.'; return; }
+  const last3 = records.slice(-3).reverse();
+  wrap.innerHTML = last3.map(r=>`
+    <div class="mini-record">
+      <div><span class="mno">${r.meterNo}</span><br><span class="mmeta">${r.meterType} · ${r.reading||'no reading'}</span></div>
+      <span class="mmeta">Sr#${r.sr}</span>
+    </div>
+  `).join('');
+}
+
+function renderRecords(){
+  document.getElementById('recCount').textContent = records.length;
+  document.getElementById('recordsMeta').textContent = `${records.length} record(s) this session — Project: ${projectName || '-'} · Device: ${deviceName || '-'}`;
+  const body = document.getElementById('recordsBody');
+  body.innerHTML = records.map(r=>`
+    <tr>
+      <td>${r.sr}</td><td>${r.meterNo}</td><td>${r.meterType}</td><td>${r.reading}</td>
+      <td>${r.physicalCondition}</td><td>${r.documentsStatus}</td><td>${r.device}</td>
+      <td><button class="pill-btn secondary" style="color:var(--warn); border-color:var(--warn); padding:5px 9px;" onclick="deleteRecord(${r.sr})">✕</button></td>
+    </tr>
+  `).join('');
+}
+function deleteRecord(sr){ records = records.filter(r=>r.sr!==sr); renderRecords(); renderRecentMini(); }
+
+function exportExcel(){
+  if(records.length===0){ alert('No records to export yet.'); return; }
+  const rows = records.map(r=>({
+    'Sr. No.': r.sr, 'Meter No.': r.meterNo, 'Meter Type': r.meterType, 'Meter Reading': r.reading,
+    'Physically Condition of Meters': r.physicalCondition, 'Documents Status': r.documentsStatus,
+    'Dispatcher Match': r.dispatcherMatch, 'Project': r.project, 'Device': r.device, 'Project Code': r.projectCode,
+    'Remarks': r.remarks,
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'DMIS Receiving');
+  const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+  const safeProj = (projectName||'Project').replace(/[^a-z0-9]/gi,'_');
+  const safeDev = (deviceName||'Device').replace(/[^a-z0-9]/gi,'_');
+  XLSX.writeFile(wb, `DMIS_${safeProj}_${safeDev}_${stamp}.xlsx`);
+}
+
+function openCloudInfo(){ document.getElementById('cloudInfoModal').classList.add('open'); }
+function closeCloudInfo(){ document.getElementById('cloudInfoModal').classList.remove('open'); }
+
+function resetForm(keepRecords){
+  document.getElementById('meterNo').value = '';
+  document.getElementById('matchBadge').innerHTML = '';
+  document.getElementById('dupWarning').innerHTML = '';
+  clearFieldFlags('meterNo');
+  selectedCategory=''; selectedAlias=''; selectedVariant=''; aliasIsManual=false;
+  document.querySelectorAll('#categoryChips button').forEach(b=>b.classList.remove('selected'));
+  document.getElementById('aliasWrap').style.display = 'none';
+  document.getElementById('aliasChips').innerHTML = '';
+  document.getElementById('aliasManualWrap').style.display = 'none';
+  document.getElementById('aliasManual').value = '';
+  document.getElementById('variantWrap').style.display = 'none';
+  renderSealChecklist(null);
+
+  document.getElementById('readWhole').value = '';
+  document.getElementById('readFrac').value = '';
+  clearFieldFlags('readWhole'); clearFieldFlags('readFrac');
+  updateReadout();
+  document.getElementById('readingThumb').innerHTML = '';
+  document.getElementById('conditionThumb').innerHTML = '';
+  document.getElementById('ocrStatus').textContent = '';
+  document.getElementById('remarks').value = '';
+  readingPhotoData = null; conditionPhotoData = null;
+
+  document.querySelectorAll('.chip-toggle').forEach(group=>{
+    if(group.id==='idxSealStatus' || group.id==='bodySealStatus') return;
+    [...group.children].forEach(b=>b.classList.remove('on-ok','on-bad'));
+    const pre = group.querySelector('button[data-val="clean"], button[data-val="ok"]');
+    if(pre){ pre.classList.add('on-ok'); group.setAttribute('data-current', pre.getAttribute('data-val')); }
+    else group.removeAttribute('data-current');
+  });
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+updateReadout();
+</script>
+</body>
+</html>
