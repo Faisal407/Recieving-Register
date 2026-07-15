@@ -765,7 +765,10 @@ function renderProjectList(){
       <tr>
         <td>${r.sr}</td><td>${r.meterNo}</td><td>${r.meterType}</td><td>${r.reading}</td>
         <td>${r.physicalCondition}</td><td>${r.documentsStatus}</td><td>${r.cloudStatus||'-'}</td>
-        <td><button class="pill-btn secondary" style="color:var(--warn); border-color:var(--warn); padding:4px 8px;" onclick="deleteProjectRecord('${p.id}',${r.sr})">✕</button></td>
+        <td style="white-space:nowrap;">
+          <button class="pill-btn secondary" style="padding:4px 8px; margin-right:4px;" onclick="retrySyncRecord('${p.id}','${r.sr}')" title="Retry Sync">🔄</button>
+          <button class="pill-btn secondary" style="color:var(--warn); border-color:var(--warn); padding:4px 8px;" onclick="deleteProjectRecord('${p.id}',${r.sr})">✕</button>
+        </td>
       </tr>`).join('');
 
     return `
@@ -1384,6 +1387,15 @@ function syncToSheet(p, rec){
   fetch(p.appsScriptUrl, { method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify(payload) })
     .then(()=>{ rec.cloudStatus = 'Sent (unconfirmed — check sheet)'; renderProjectList(); })
     .catch(()=>{ rec.cloudStatus = 'Send failed — check URL'; renderProjectList(); });
+}
+function retrySyncRecord(projId, sr){
+  const p = projects.find(x=>x.id===projId);
+  if(!p) return;
+  const rec = p.records.find(r=>String(r.sr)===String(sr));
+  if(!rec) return;
+  rec.cloudStatus = 'Sending…';
+  renderProjectList();
+  syncToSheet(p, rec);
 }
 
 function renderRecentMini(){
