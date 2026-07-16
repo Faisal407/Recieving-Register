@@ -180,6 +180,7 @@
     ⚠ <b>Your projects won't survive a refresh yet.</b> Set up your Auto-Restore Link once in
     <b>Settings</b> — after that, opening the app from that link brings everything back automatically.
   </div>
+  <div class="banner info" id="restoreStatusBanner" style="display:none;"></div>
   <div class="row">
     <button class="btn amber" onclick="openNewProjectModal()">➕ New Project</button>
     <button class="btn outline" onclick="openJoinProjectModal()">🔗 Join via Code</button>
@@ -793,6 +794,15 @@ function saveProjectCloudSettings(id){
   }
   if(registrySheetId && p.sheetId && p.appsScriptUrl) registerProjectInRegistry(p);
 }
+function saveProjectDeviceName(id){
+  const p = projects.find(x=>x.id===id);
+  const val = document.getElementById('pcDevice-'+id).value.trim();
+  p.device = val || 'This device';
+  renderProjectList();
+  if(activeProjectId===id){
+    document.getElementById('projTag').textContent = `${p.name} · ${p.device}${p.appsScriptUrl ? ' · Cloud Sync ON' : ''}`;
+  }
+}
 function testProjectCloudSync(id){
   const p = projects.find(x=>x.id===id);
   if(!p.appsScriptUrl || !p.sheetId){ alert('Paste both the Google Sheet ID and the Apps Script Web App URL for this project first.'); return; }
@@ -988,11 +998,11 @@ function restoreProjectsFromRegistry(regId, scriptUrl){
   const surlEl = document.getElementById('registryScriptUrlInput');
   if(sidEl) sidEl.value = regId;
   if(surlEl) surlEl.value = scriptUrl;
+  showRestoreStatus('Restoring your projects…');
 
   jsonpRequest(scriptUrl, {action:'listProjects', sheetId:regId}).then(data=>{
     const list = (data && data.projects) || [];
-    if(list.length === 0) return;
-    const deviceName = window.prompt('Welcome back! What device name should show on entries you save today?', 'This device') || 'This device';
+    if(list.length === 0){ showRestoreStatus('No projects found yet in this registry.'); return; }
     let restored = 0;
     list.forEach(item=>{
       if(!item.sheetId) return;
@@ -1000,7 +1010,7 @@ function restoreProjectsFromRegistry(regId, scriptUrl){
       if(already) return;
       const proj = {
         id: 'p_' + Date.now() + Math.floor(Math.random()*100000),
-        name: item.name || 'Restored Project', device: deviceName,
+        name: item.name || 'Restored Project', device: 'This device',
         sheetId: item.sheetId, appsScriptUrl: scriptUrl,
         records: [], dispatcherSet: new Set(), srCounter: 1,
         createdAt: item.createdAt || new Date().toLocaleString(),
@@ -1012,8 +1022,19 @@ function restoreProjectsFromRegistry(regId, scriptUrl){
     });
     renderProjectList();
     updateRegistryReminder();
-    if(restored>0) alert(`Welcome back — restored ${restored} project(s) automatically from your link. Records are loading in the background.`);
-  }).catch(()=>{ console.warn('Could not auto-restore projects from registry.'); });
+    showRestoreStatus(restored>0
+      ? `✓ Restored ${restored} project(s) automatically. Records are loading in the background — check each project's Device name on its card and update it if needed.`
+      : 'Projects already loaded — nothing new to restore.');
+  }).catch(err=>{
+    showRestoreStatus('⚠ Could not auto-restore — check your internet connection and try reopening the link. (' + (err && err.message ? err.message : 'unknown error') + ')');
+    console.warn('Could not auto-restore projects from registry.', err);
+  });
+}
+function showRestoreStatus(msg){
+  const el = document.getElementById('restoreStatusBanner');
+  if(!el) return;
+  el.textContent = msg;
+  el.style.display = 'block';
 }
 
 function pullRecordsFromSheet(id){
@@ -1193,6 +1214,11 @@ function renderProjectList(){
       </div>
 
       <div class="pc-cloud">
+        <label class="field-label">Device Name (shown on entries saved from here)</label>
+        <div class="row">
+          <input type="text" id="pcDevice-${p.id}" value="${p.device||''}" placeholder="e.g. Inspector-1 Phone">
+          <button class="btn outline small" style="flex:0 0 70px;" onclick="saveProjectDeviceName('${p.id}')">Save</button>
+        </div>
         <label class="field-label">Google Sheet ID (unique to this project)</label>
         <input type="text" id="pcSheetId-${p.id}" value="${p.sheetId||''}" placeholder="Sheet ID from its URL">
         <label class="field-label">Apps Script Web App URL (same one for every project)</label>
