@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -94,9 +93,11 @@
 
   video.cam-preview{width:100%; border-radius:10px; background:#000; display:block;}
   canvas{display:none;}
-  .thumb-row{display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;}
+  .thumb-row{display:flex; gap:10px; margin-top:8px; flex-wrap:wrap;}
+  .thumb-wrap{position:relative; display:inline-block;}
   .thumb{width:64px; height:64px; border-radius:8px; overflow:hidden; border:1.5px solid var(--line);}
   .thumb img{width:100%; height:100%; object-fit:cover;}
+  .thumb-remove{position:absolute; top:-7px; right:-7px; width:20px; height:20px; border-radius:999px; background:var(--warn); color:#fff; border:2px solid #fff; font-size:11px; line-height:1; cursor:pointer; padding:0;}
 
   .modal-backdrop{position:fixed; inset:0; background:rgba(10,15,20,.86); z-index:100; display:none; align-items:center; justify-content:center; padding:16px;}
   .modal-backdrop.open{display:flex;}
@@ -242,8 +243,9 @@
 
   <div class="card" id="section-3">
     <h2><span class="num">3</span> Meter Reading</h2>
-    <div class="subtext">Point the camera at the index/counter digits and capture — separate from the barcode scan in Step 1.</div>
-    <button class="btn amber" onclick="openCamera('reading')">📷 Scan / Capture Reading</button>
+    <div class="subtext">Point the camera at the index/counter digits and capture — separate from the barcode scan in Step 1.
+      OCR runs on the newest photo each time; add another if the digits weren't clear.</div>
+    <button class="btn amber" onclick="openCamera('reading')">📷 Add Reading Photo</button>
     <div class="ocr-status" id="ocrStatus"></div>
     <div class="thumb-row" id="readingThumb"></div>
     <label class="field-label">Whole m³ digits</label>
@@ -284,7 +286,7 @@
     <label class="field-label">Seal Status</label>
     <div id="sealChecklist"></div>
 
-    <button class="btn outline" onclick="openCamera('condition')">📷 Add Condition Photo (optional)</button>
+    <button class="btn outline" onclick="openCamera('condition')">📷 Add Condition Photo (optional, multiple allowed)</button>
     <div class="thumb-row" id="conditionThumb"></div>
   </div>
 
@@ -368,10 +370,10 @@
       </div>
     </div>
 
-    <label class="field-label">Document Photos (optional)</label>
+    <label class="field-label">Document Photos (optional, multiple pages allowed per document)</label>
     <div class="row">
-      <button class="btn outline" onclick="openCamera('ogra')">📷 OGRA Form Photo</button>
-      <button class="btn outline" onclick="openCamera('mrc')">📷 MRC Photo</button>
+      <button class="btn outline" onclick="openCamera('ogra')">📷 Add OGRA Form Photo</button>
+      <button class="btn outline" onclick="openCamera('mrc')">📷 Add MRC Photo</button>
     </div>
     <div class="thumb-row" id="ograThumb"></div>
     <div class="thumb-row" id="mrcThumb"></div>
@@ -449,14 +451,19 @@
     </p>
     <div class="banner info" style="margin-top:4px; margin-bottom:14px;">
       <b>One requirement:</b> every Sheet ID you use must belong to (or be shared with) the same Google account
-      that deployed this script — since the script writes using that account's permissions. Photos get uploaded
-      into a Drive folder named after each Sheet, shared as "anyone with the link can view," and linked in these
-      4 extra columns. <b>If you already have sheets from before this version:</b> add these 4 header cells
-      manually to the end of that Sheet's <code>DMIS Receiving</code> row 1 — <code>Reading Photo URL</code>,
-      <code>Condition Photo URL</code>, <code>OGRA Photo URL</code>, <code>MRC Photo URL</code> — new Sheets get
-      this automatically.
+      that deployed this script. Photos now go into one master Drive folder called <code>Meter Receiving
+      Photos</code>, with a subfolder per project named <code>ProjectName - Date - MRV No - Device Name</code>
+      (Device Name doubles as the folder identifier — no separate "creator" field). Filenames include the
+      meter number and the device that took the photo.
+      <b>If you already have sheets from before this version:</b> add these header cells to the end of that
+      Sheet's <code>DMIS Receiving</code> row 1 — <code>MR/MRV No.</code>, <code>Reading Photo URLs</code>,
+      <code>Condition Photo URLs</code>, <code>OGRA Photo URLs</code>, <code>MRC Photo URLs</code> — new Sheets
+      get this automatically. You'll also want to add an <code>MRV No</code> column to your registry Sheet's
+      <code>Projects</code> tab if you set one up before this version. Note: since the folder name now includes
+      Device Name, if more than one device works on the same project, each device's photos land in their own
+      subfolder rather than one shared folder — worth keeping in mind if that matters for your workflow.
     </div>
-    <textarea readonly rows="52" class="mono" style="font-size:11px; white-space:pre;" id="appsScriptCodeBox">function doPost(e) {
+    <textarea readonly rows="66" class="mono" style="font-size:11px; white-space:pre;" id="appsScriptCodeBox">function doPost(e) {
   if (!e || !e.postData) {
     // Happens if you click "Run" manually in the editor instead of a real request — harmless, ignore.
     return ContentService.createTextOutput(JSON.stringify({status:'error', message:'No request data — this function is meant to be called via the deployed Web App URL, not Run manually.'}))
@@ -479,7 +486,7 @@
     var psheet = ss.getSheetByName('Projects');
     if (!psheet) {
       psheet = ss.insertSheet('Projects');
-      psheet.appendRow(['Name', 'Sheet ID', 'Created At']);
+      psheet.appendRow(['Name', 'Sheet ID', 'Created At', 'MRV No']);
     }
     var pvals = psheet.getDataRange().getValues();
     var exists = false;
@@ -487,7 +494,8 @@
       if (pvals[pi][1] === data.projectSheetId) { exists = true; break; }
     }
     if (!exists) {
-      psheet.appendRow([data.name, data.projectSheetId, data.createdAt || new Date().toISOString()]);
+      psheet.appendRow([data.name, data.projectSheetId, data.createdAt || new Date().toISOString(),
+        data.mrvNo || '']);
     }
     return ContentService.createTextOutput(JSON.stringify({status:'ok'}))
       .setMimeType(ContentService.MimeType.JSON);
@@ -497,36 +505,56 @@
   if (!sheet) {
     sheet = ss.insertSheet('DMIS Receiving');
     sheet.appendRow(['Timestamp','Sr No','Meter No','Meter Type','Meter Reading',
-      'Physical Condition','Documents Status','Dispatcher Match','Project','Device','Remarks',
-      'Reading Photo URL','Condition Photo URL','OGRA Photo URL','MRC Photo URL']);
+      'Physical Condition','Documents Status','Dispatcher Match','Project','Device','MR/MRV No.','Remarks',
+      'Reading Photo URLs','Condition Photo URLs','OGRA Photo URLs','MRC Photo URLs']);
   }
 
-  function uploadPhoto(base64, label) {
-    if (!base64) return '';
+  // One master folder for every project's photos, with a subfolder per project.
+  function getProjectPhotoFolder() {
+    var masterName = 'Meter Receiving Photos';
+    var masterFolders = DriveApp.getFoldersByName(masterName);
+    var masterFolder = masterFolders.hasNext() ? masterFolders.next() : DriveApp.createFolder(masterName);
+
+    var dateStr = data.projectDate || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    var mrvPart = data.mrvNo ? ('MRV-' + data.mrvNo) : 'NoMRV';
+    var devicePart = data.device || 'Unknown';
+    var subfolderName = (data.project || 'Project') + ' - ' + dateStr + ' - ' + mrvPart + ' - ' + devicePart;
+    subfolderName = subfolderName.replace(/[\/\\:*?"<>|]/g, '-');
+
+    var subFolders = masterFolder.getFoldersByName(subfolderName);
+    return subFolders.hasNext() ? subFolders.next() : masterFolder.createFolder(subfolderName);
+  }
+
+  function uploadPhotos(base64Array, label) {
+    if (!base64Array || !base64Array.length) return '';
+    var urls = [];
     try {
-      var folderName = ss.getName() + ' Photos';
-      var folders = DriveApp.getFoldersByName(folderName);
-      var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
-      var blob = Utilities.newBlob(Utilities.base64Decode(base64), 'image/jpeg',
-        label + '_' + data.meterNo + '_' + new Date().getTime() + '.jpg');
-      var file = folder.createFile(blob);
-      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-      return file.getUrl();
+      var folder = getProjectPhotoFolder();
+      base64Array.forEach(function(b64, idx) {
+        if (!b64) return;
+        var blob = Utilities.newBlob(Utilities.base64Decode(b64), 'image/jpeg',
+          label + '_' + data.meterNo + '_' + (data.device || 'device') + '_' +
+          new Date().getTime() + '_' + idx + '.jpg');
+        var file = folder.createFile(blob);
+        file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+        urls.push(file.getUrl());
+      });
     } catch (err) {
       return 'Upload error: ' + err.message;
     }
+    return urls.join('\n');
   }
 
-  var readingUrl = uploadPhoto(data.photoReading, 'reading');
-  var conditionUrl = uploadPhoto(data.photoCondition, 'condition');
-  var ograUrl = uploadPhoto(data.photoOgra, 'ogra');
-  var mrcUrl = uploadPhoto(data.photoMrc, 'mrc');
+  var readingUrls = uploadPhotos(data.photoReading, 'reading');
+  var conditionUrls = uploadPhotos(data.photoCondition, 'condition');
+  var ograUrls = uploadPhotos(data.photoOgra, 'ogra');
+  var mrcUrls = uploadPhotos(data.photoMrc, 'mrc');
 
   sheet.appendRow([
     new Date(), data.sr, data.meterNo, data.meterType, data.reading,
     data.physicalCondition, data.documentsStatus, data.dispatcherMatch,
-    data.project, data.device, data.remarks,
-    readingUrl, conditionUrl, ograUrl, mrcUrl
+    data.project, data.device, data.mrvNo || '', data.remarks,
+    readingUrls, conditionUrls, ograUrls, mrcUrls
   ]);
   return ContentService.createTextOutput(JSON.stringify({status:'ok'}))
     .setMimeType(ContentService.MimeType.JSON);
@@ -554,7 +582,10 @@ function doGet(e) {
     if (psheet) {
       var pvals = psheet.getDataRange().getValues();
       for (var pi = 1; pi < pvals.length; pi++) {
-        if (pvals[pi][1]) plist.push({ name: pvals[pi][0], sheetId: pvals[pi][1], createdAt: pvals[pi][2] });
+        if (pvals[pi][1]) plist.push({
+          name: pvals[pi][0], sheetId: pvals[pi][1], createdAt: pvals[pi][2],
+          mrvNo: pvals[pi][3] || ''
+        });
       }
     }
     result = { projects: plist };
@@ -622,13 +653,16 @@ function doGet(e) {
     <input type="text" id="npName" placeholder="e.g. DMIS Receiving — Batch 14">
     <label class="field-label">Device Name</label>
     <input type="text" id="npDevice" placeholder="e.g. Inspector-1 Phone">
+    <label class="field-label">MR / MRV No. (Material Requisition / Return Voucher) — optional</label>
+    <input type="text" id="npMrvNo" placeholder="e.g. MRV-2026-0417">
     <label class="field-label">Google Sheet ID for this project (optional — link later if unsure)</label>
     <input type="text" id="npSheetId" placeholder="From this project's own Sheet URL, e.g. 1AbC...xyz">
     <label class="field-label">Apps Script Web App URL (optional — same URL reused for every project)</label>
     <input type="text" id="npScriptUrl" placeholder="https://script.google.com/macros/s/…/exec">
     <div class="subtext" style="margin-top:8px;">
       One Apps Script deployment covers all your projects — see <b>Settings</b> for the one-time setup.
-      Each project just needs its own Sheet ID here.
+      Each project just needs its own Sheet ID here. MR/MRV No. and Device Name are used to name this
+      project's photo folder in Google Drive.
     </div>
     <button class="btn amber" onclick="createProject()">Create Project</button>
     <button class="btn outline" onclick="closeNewProjectModal()">Cancel</button>
@@ -710,10 +744,10 @@ function getActiveProject(){ return projects.find(p=>p.id===activeProjectId) || 
 
 let currentCameraMode = null;
 let cameraStream = null;
-let readingPhotoData = null;
-let conditionPhotoData = null;
-let ograPhotoData = null;
-let mrcPhotoData = null;
+let readingPhotos = [];
+let conditionPhotos = [];
+let ograPhotos = [];
+let mrcPhotos = [];
 let html5QrScanner = null;
 let scannerGotDecode = false;
 
@@ -753,19 +787,21 @@ function refreshInspectVisibility(){
 function openNewProjectModal(){ document.getElementById('newProjectModal').classList.add('open'); }
 function closeNewProjectModal(){
   document.getElementById('newProjectModal').classList.remove('open');
-  ['npName','npDevice','npSheetId','npScriptUrl'].forEach(id=>document.getElementById(id).value='');
+  ['npName','npDevice','npMrvNo','npSheetId','npScriptUrl'].forEach(id=>document.getElementById(id).value='');
 }
 function createProject(){
   const name = document.getElementById('npName').value.trim();
   const device = document.getElementById('npDevice').value.trim();
+  const mrvNo = document.getElementById('npMrvNo').value.trim();
   const sheetId = document.getElementById('npSheetId').value.trim();
   const appsScriptUrl = document.getElementById('npScriptUrl').value.trim();
   if(!name || !device){ alert('Please enter both Project Name and Device Name.'); return; }
   const proj = {
     id: 'p_' + Date.now() + Math.floor(Math.random()*1000),
-    name, device, sheetId, appsScriptUrl,
+    name, device, mrvNo, sheetId, appsScriptUrl,
     records: [], dispatcherSet: new Set(), srCounter: 1,
     createdAt: new Date().toLocaleString(),
+    createdDateShort: new Date().toISOString().slice(0,10),
   };
   projects.push(proj);
   closeNewProjectModal();
@@ -802,6 +838,14 @@ function saveProjectDeviceName(id){
   if(activeProjectId===id){
     document.getElementById('projTag').textContent = `${p.name} · ${p.device}${p.appsScriptUrl ? ' · Cloud Sync ON' : ''}`;
   }
+  if(registrySheetId && p.sheetId && p.appsScriptUrl) registerProjectInRegistry(p);
+}
+function saveProjectMeta(id){
+  const p = projects.find(x=>x.id===id);
+  p.mrvNo = document.getElementById('pcMrvNo-'+id).value.trim();
+  if(!p.createdDateShort) p.createdDateShort = new Date().toISOString().slice(0,10);
+  renderProjectList();
+  if(registrySheetId && p.sheetId && p.appsScriptUrl) registerProjectInRegistry(p);
 }
 function testProjectCloudSync(id){
   const p = projects.find(x=>x.id===id);
@@ -989,16 +1033,18 @@ function registerProjectInRegistry(p){
   if(!registrySheetId || !p.appsScriptUrl || !p.sheetId) return;
   fetch(p.appsScriptUrl, {
     method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify({ action:'registerProject', sheetId:registrySheetId, name:p.name, projectSheetId:p.sheetId, createdAt:p.createdAt })
+    body: JSON.stringify({ action:'registerProject', sheetId:registrySheetId, name:p.name, projectSheetId:p.sheetId,
+      createdAt:p.createdAt, mrvNo:p.mrvNo||'' })
   }).catch(()=>{});
 }
-function restoreProjectsFromRegistry(regId, scriptUrl){
+function restoreProjectsFromRegistry(regId, scriptUrl, attempt){
+  attempt = attempt || 1;
   registrySheetId = regId; registryScriptUrl = scriptUrl;
   const sidEl = document.getElementById('registrySheetIdInput');
   const surlEl = document.getElementById('registryScriptUrlInput');
   if(sidEl) sidEl.value = regId;
   if(surlEl) surlEl.value = scriptUrl;
-  showRestoreStatus('Restoring your projects…');
+  showRestoreStatus(attempt>1 ? `Restoring your projects… (retry ${attempt-1})` : 'Restoring your projects…');
 
   jsonpRequest(scriptUrl, {action:'listProjects', sheetId:regId}).then(data=>{
     const list = (data && data.projects) || [];
@@ -1011,9 +1057,11 @@ function restoreProjectsFromRegistry(regId, scriptUrl){
       const proj = {
         id: 'p_' + Date.now() + Math.floor(Math.random()*100000),
         name: item.name || 'Restored Project', device: 'This device',
+        mrvNo: item.mrvNo||'',
         sheetId: item.sheetId, appsScriptUrl: scriptUrl,
         records: [], dispatcherSet: new Set(), srCounter: 1,
         createdAt: item.createdAt || new Date().toLocaleString(),
+        createdDateShort: (item.createdAt||'').slice(0,10) || new Date().toISOString().slice(0,10),
       };
       projects.push(proj);
       restored++;
@@ -1026,14 +1074,22 @@ function restoreProjectsFromRegistry(regId, scriptUrl){
       ? `✓ Restored ${restored} project(s) automatically. Records are loading in the background — check each project's Device name on its card and update it if needed.`
       : 'Projects already loaded — nothing new to restore.');
   }).catch(err=>{
-    showRestoreStatus('⚠ Could not auto-restore — check your internet connection and try reopening the link. (' + (err && err.message ? err.message : 'unknown error') + ')');
-    console.warn('Could not auto-restore projects from registry.', err);
+    if(attempt < 3){
+      showRestoreStatus(`Connection hiccup — retrying automatically… (${attempt}/3)`);
+      setTimeout(()=>restoreProjectsFromRegistry(regId, scriptUrl, attempt+1), 1800);
+    } else {
+      showRestoreStatus('⚠ Could not auto-restore after 3 tries — check your internet connection, then retry.', true);
+      console.warn('Could not auto-restore projects from registry.', err);
+    }
   });
 }
-function showRestoreStatus(msg){
+function manualRetryRestore(){
+  if(registrySheetId && registryScriptUrl) restoreProjectsFromRegistry(registrySheetId, registryScriptUrl, 1);
+}
+function showRestoreStatus(msg, showRetry){
   const el = document.getElementById('restoreStatusBanner');
   if(!el) return;
-  el.textContent = msg;
+  el.innerHTML = msg + (showRetry ? '<br><button class="btn outline small" style="margin-top:8px; width:auto; display:inline-block;" onclick="manualRetryRestore()">🔄 Retry Now</button>' : '');
   el.style.display = 'block';
 }
 
@@ -1046,16 +1102,20 @@ function pullRecordsFromSheet(id){
     const rows = (data && data.records) || [];
     let added = 0, updated = 0;
     const urlCols = [
-      ['Reading Photo URL','photoReadingUrl'], ['Condition Photo URL','photoConditionUrl'],
-      ['OGRA Photo URL','photoOgraUrl'], ['MRC Photo URL','photoMrcUrl'],
+      ['Reading Photo URLs','photoReadingUrls'], ['Condition Photo URLs','photoConditionUrls'],
+      ['OGRA Photo URLs','photoOgraUrls'], ['MRC Photo URLs','photoMrcUrls'],
     ];
+    const splitUrls = v => String(v||'').split('\n').map(s=>s.trim()).filter(Boolean);
     rows.forEach(row=>{
       const meterNo = row['Meter No'];
       if(!meterNo) return;
       const match = p.records.find(r=>r.meterNo.trim().toUpperCase()===String(meterNo).trim().toUpperCase());
       if(match){
         let changed = false;
-        urlCols.forEach(([col,key])=>{ if(row[col] && !match[key]){ match[key]=row[col]; changed=true; } });
+        urlCols.forEach(([col,key])=>{
+          const urls = splitUrls(row[col]);
+          if(urls.length && (!match[key] || match[key].length===0)){ match[key]=urls; changed=true; }
+        });
         if(changed) updated++;
         return;
       }
@@ -1067,7 +1127,7 @@ function pullRecordsFromSheet(id){
         documentsStatus: row['Documents Status']||'', remarks: row['Remarks']||'',
         dispatcherMatch: row['Dispatcher Match']||'', cloudStatus: 'Synced from sheet',
       };
-      urlCols.forEach(([col,key])=>{ newRec[key] = row[col]||''; });
+      urlCols.forEach(([col,key])=>{ newRec[key] = splitUrls(row[col]); });
       p.records.push(newRec);
       added++;
     });
@@ -1218,6 +1278,11 @@ function renderProjectList(){
         <div class="row">
           <input type="text" id="pcDevice-${p.id}" value="${p.device||''}" placeholder="e.g. Inspector-1 Phone">
           <button class="btn outline small" style="flex:0 0 70px;" onclick="saveProjectDeviceName('${p.id}')">Save</button>
+        </div>
+        <label class="field-label">MR / MRV No. (Device Name above is used for the Drive photo folder name)</label>
+        <div class="row">
+          <input type="text" id="pcMrvNo-${p.id}" value="${p.mrvNo||''}" placeholder="MR/MRV No. (optional)">
+          <button class="btn outline small" style="flex:0 0 70px;" onclick="saveProjectMeta('${p.id}')">Save</button>
         </div>
         <label class="field-label">Google Sheet ID (unique to this project)</label>
         <input type="text" id="pcSheetId-${p.id}" value="${p.sheetId||''}" placeholder="Sheet ID from its URL">
@@ -1595,25 +1660,38 @@ function closeCamera(){
   document.getElementById('cameraModal').classList.remove('open');
   if(cameraStream){ cameraStream.getTracks().forEach(t=>t.stop()); cameraStream = null; }
 }
+const PHOTO_MODE_MAP = {
+  reading: { list: () => readingPhotos, containerId: 'readingThumb' },
+  condition: { list: () => conditionPhotos, containerId: 'conditionThumb' },
+  ogra: { list: () => ograPhotos, containerId: 'ograThumb' },
+  mrc: { list: () => mrcPhotos, containerId: 'mrcThumb' },
+};
+function renderPhotoThumbs(list, containerId, mode){
+  const el = document.getElementById(containerId);
+  if(!el) return;
+  el.innerHTML = list.map((url,i)=>`
+    <div class="thumb-wrap">
+      <div class="thumb"><img src="${url}"></div>
+      <button class="thumb-remove" onclick="removePhoto('${mode}', ${i})" title="Remove">✕</button>
+    </div>`).join('');
+}
+function removePhoto(mode, idx){
+  const entry = PHOTO_MODE_MAP[mode];
+  if(!entry) return;
+  entry.list().splice(idx, 1);
+  renderPhotoThumbs(entry.list(), entry.containerId, mode);
+}
 function capturePhoto(){
   const video = document.getElementById('camVideo');
   const canvas = document.getElementById('camCanvas');
   canvas.width = video.videoWidth; canvas.height = video.videoHeight;
   canvas.getContext('2d').drawImage(video,0,0,canvas.width,canvas.height);
   const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-  if(currentCameraMode === 'reading'){
-    readingPhotoData = dataUrl;
-    document.getElementById('readingThumb').innerHTML = `<div class="thumb"><img src="${dataUrl}"></div>`;
-    tryOcr(dataUrl);
-  } else if(currentCameraMode === 'condition'){
-    conditionPhotoData = dataUrl;
-    document.getElementById('conditionThumb').innerHTML = `<div class="thumb"><img src="${dataUrl}"></div>`;
-  } else if(currentCameraMode === 'ogra'){
-    ograPhotoData = dataUrl;
-    document.getElementById('ograThumb').innerHTML = `<div class="thumb"><img src="${dataUrl}"></div>`;
-  } else if(currentCameraMode === 'mrc'){
-    mrcPhotoData = dataUrl;
-    document.getElementById('mrcThumb').innerHTML = `<div class="thumb"><img src="${dataUrl}"></div>`;
+  const entry = PHOTO_MODE_MAP[currentCameraMode];
+  if(entry){
+    entry.list().push(dataUrl);
+    renderPhotoThumbs(entry.list(), entry.containerId, currentCameraMode);
+    if(currentCameraMode === 'reading') tryOcr(dataUrl);
   }
   closeCamera();
 }
@@ -1820,6 +1898,9 @@ function compressImageForUpload(dataUrl, maxW, quality){
     img.src = dataUrl;
   });
 }
+function compressList(list, maxW, quality){
+  return Promise.all((list||[]).map(d=>compressImageForUpload(d, maxW, quality))).then(arr=>arr.filter(Boolean));
+}
 
 function saveRecord(){
   const p = getActiveProject();
@@ -1863,9 +1944,9 @@ function saveRecord(){
     remarks: document.getElementById('remarks').value.trim(),
     cloudStatus: 'Preparing…',
     // full-res photo data kept in memory so Retry Sync can always re-upload
-    photoReadingData: readingPhotoData, photoConditionData: conditionPhotoData,
-    photoOgraData: ograPhotoData, photoMrcData: mrcPhotoData,
-    photoReadingUrl:'', photoConditionUrl:'', photoOgraUrl:'', photoMrcUrl:'',
+    photoReadingDataList: [...readingPhotos], photoConditionDataList: [...conditionPhotos],
+    photoOgraDataList: [...ograPhotos], photoMrcDataList: [...mrcPhotos],
+    photoReadingUrls: [], photoConditionUrls: [], photoOgraUrls: [], photoMrcUrls: [],
   };
   p.records.push(rec);
   renderProjectList();
@@ -1874,12 +1955,12 @@ function saveRecord(){
   playBeep(1200,120);
 
   Promise.all([
-    compressImageForUpload(rec.photoReadingData, 900, 0.55),
-    compressImageForUpload(rec.photoConditionData, 900, 0.55),
-    compressImageForUpload(rec.photoOgraData, 1100, 0.6),
-    compressImageForUpload(rec.photoMrcData, 1100, 0.6),
-  ]).then(([rB64,cB64,oB64,mB64])=>{
-    syncToSheet(p, rec, { reading:rB64, condition:cB64, ogra:oB64, mrc:mB64 });
+    compressList(rec.photoReadingDataList, 900, 0.55),
+    compressList(rec.photoConditionDataList, 900, 0.55),
+    compressList(rec.photoOgraDataList, 1100, 0.6),
+    compressList(rec.photoMrcDataList, 1100, 0.6),
+  ]).then(([rList,cList,oList,mList])=>{
+    syncToSheet(p, rec, { reading:rList, condition:cList, ogra:oList, mrc:mList });
   }).catch(()=>{ syncToSheet(p, rec, {}); });
 }
 
@@ -1887,12 +1968,13 @@ function syncToSheet(p, rec, photos){
   if(!p.appsScriptUrl || !p.sheetId){ rec.cloudStatus = 'Not configured'; renderProjectList(); return; }
   const payload = { sheetId:p.sheetId, sr:rec.sr, meterNo:rec.meterNo, meterType:rec.meterType, reading:rec.reading,
     physicalCondition:rec.physicalCondition, documentsStatus:rec.documentsStatus,
-    dispatcherMatch:rec.dispatcherMatch, project:p.name, device:p.device, remarks:rec.remarks };
+    dispatcherMatch:rec.dispatcherMatch, project:p.name, device:p.device, remarks:rec.remarks,
+    mrvNo: p.mrvNo||'', projectDate: p.createdDateShort||'' };
   if(photos){
-    if(photos.reading) payload.photoReading = photos.reading;
-    if(photos.condition) payload.photoCondition = photos.condition;
-    if(photos.ogra) payload.photoOgra = photos.ogra;
-    if(photos.mrc) payload.photoMrc = photos.mrc;
+    if(photos.reading && photos.reading.length) payload.photoReading = photos.reading;
+    if(photos.condition && photos.condition.length) payload.photoCondition = photos.condition;
+    if(photos.ogra && photos.ogra.length) payload.photoOgra = photos.ogra;
+    if(photos.mrc && photos.mrc.length) payload.photoMrc = photos.mrc;
   }
   rec.cloudStatus = 'Sending…';
   renderProjectList();
@@ -1908,12 +1990,12 @@ function retrySyncRecord(projId, sr){
   rec.cloudStatus = 'Sending…';
   renderProjectList();
   Promise.all([
-    compressImageForUpload(rec.photoReadingData, 900, 0.55),
-    compressImageForUpload(rec.photoConditionData, 900, 0.55),
-    compressImageForUpload(rec.photoOgraData, 1100, 0.6),
-    compressImageForUpload(rec.photoMrcData, 1100, 0.6),
-  ]).then(([rB64,cB64,oB64,mB64])=>{
-    syncToSheet(p, rec, { reading:rB64, condition:cB64, ogra:oB64, mrc:mB64 });
+    compressList(rec.photoReadingDataList, 900, 0.55),
+    compressList(rec.photoConditionDataList, 900, 0.55),
+    compressList(rec.photoOgraDataList, 1100, 0.6),
+    compressList(rec.photoMrcDataList, 1100, 0.6),
+  ]).then(([rList,cList,oList,mList])=>{
+    syncToSheet(p, rec, { reading:rList, condition:cList, ogra:oList, mrc:mList });
   }).catch(()=>{ syncToSheet(p, rec, {}); });
 }
 
@@ -1935,10 +2017,10 @@ function exportProjectExcel(id){
   const rows = p.records.map(r=>({
     'Sr. No.': r.sr, 'Meter No.': r.meterNo, 'Meter Type': r.meterType, 'Meter Reading': r.reading,
     'Physically Condition of Meters': r.physicalCondition, 'Documents Status': r.documentsStatus,
-    'Dispatcher Match': r.dispatcherMatch, 'Project': p.name, 'Device': p.device,
+    'Dispatcher Match': r.dispatcherMatch, 'Project': p.name, 'Device': p.device, 'MR/MRV No.': p.mrvNo||'',
     'Cloud Status': r.cloudStatus,
-    'Reading Photo': r.photoReadingUrl||'', 'Condition Photo': r.photoConditionUrl||'',
-    'OGRA Form Photo': r.photoOgraUrl||'', 'MRC Photo': r.photoMrcUrl||'',
+    'Reading Photos': (r.photoReadingUrls||[]).join('\n'), 'Condition Photos': (r.photoConditionUrls||[]).join('\n'),
+    'OGRA Form Photos': (r.photoOgraUrls||[]).join('\n'), 'MRC Photos': (r.photoMrcUrls||[]).join('\n'),
     'Remarks': r.remarks,
   }));
   const ws = XLSX.utils.json_to_sheet(rows);
@@ -1981,7 +2063,7 @@ function resetForm(keepProjectsUntouched){
   document.getElementById('mrcThumb').innerHTML = '';
   document.getElementById('ocrStatus').textContent = '';
   document.getElementById('remarks').value = '';
-  readingPhotoData = null; conditionPhotoData = null; ograPhotoData = null; mrcPhotoData = null;
+  readingPhotos = []; conditionPhotos = []; ograPhotos = []; mrcPhotos = [];
 
   document.querySelectorAll('.chip-toggle, .doc-select-group').forEach(group=>{
     if(group.id==='idxSealStatus' || group.id==='bodySealStatus') return;
