@@ -110,6 +110,15 @@
   .doc-item .q{font-size:13.5px; font-weight:600; color:var(--ink); line-height:1.35; margin-bottom:6px;}
   .chip-toggle button.on-neutral{background:var(--steel); color:#fff;}
 
+  .doc-select-group{display:flex; flex-wrap:wrap; gap:6px;}
+  .doc-select-group button{
+    padding:7px 11px; border-radius:8px; border:1.5px solid var(--line);
+    background:#fff; font-size:11.5px; font-weight:700; color:var(--muted); cursor:pointer;
+  }
+  .doc-select-group button.on-ok{background:var(--ok); color:#fff; border-color:var(--ok);}
+  .doc-select-group button.on-bad{background:var(--warn); color:#fff; border-color:var(--warn);}
+  .doc-select-group button.on-neutral{background:var(--steel); color:#fff; border-color:var(--steel);}
+
 
   table.records{width:100%; border-collapse:collapse; font-size:12.5px;}
   table.records th, table.records td{border:1px solid var(--line); padding:7px 6px; text-align:left; vertical-align:top;}
@@ -153,6 +162,7 @@
   <div class="main-tabs">
     <button class="main-tab" id="tabBtnInspect" onclick="showTab('inspect')">📋 Inspection</button>
     <button class="main-tab active" id="tabBtnProjects" onclick="showTab('projects')">🗂 Projects</button>
+    <button class="main-tab" id="tabBtnStats" onclick="showTab('stats')">📊 Stats</button>
     <button class="main-tab" id="tabBtnSettings" onclick="showTab('settings')">⚙ Settings</button>
   </div>
 </header>
@@ -249,17 +259,21 @@
     <label class="field-label">Index / Counter</label>
     <div class="cond-row">
       <span class="cond-label">Counter face</span>
-      <div class="chip-toggle" id="tgCounterDirt"><button data-val="clean" class="on-ok">Clean</button><button data-val="dirty">Dirty</button></div>
+      <div class="chip-toggle" id="tgCounterDirt"><button data-val="clean" data-default="true">Clean</button><button data-val="dirty">Dirty</button></div>
     </div>
     <div class="cond-row">
       <span class="cond-label">Counter glass</span>
-      <div class="chip-toggle" id="tgGlass"><button data-val="ok" class="on-ok">OK</button><button data-val="damaged">Damaged</button></div>
+      <div class="chip-toggle" id="tgGlass"><button data-val="ok" data-default="true">OK</button><button data-val="damaged">Damaged</button></div>
+    </div>
+    <div class="cond-row">
+      <span class="cond-label">Moisture in Index</span>
+      <div class="chip-toggle" id="tgMoisture" data-ok="no"><button data-val="no" data-default="true">No</button><button data-val="yes">Yes</button></div>
     </div>
 
     <label class="field-label">Meter Body</label>
     <div class="cond-row">
       <span class="cond-label">Body condition</span>
-      <div class="chip-toggle" id="tgBody"><button data-val="ok" class="on-ok">OK</button><button data-val="damaged">Damaged</button></div>
+      <div class="chip-toggle" id="tgBody"><button data-val="ok" data-default="true">OK</button><button data-val="damaged">Damaged</button></div>
     </div>
 
     <label class="field-label">Seal Status</label>
@@ -271,41 +285,74 @@
 
   <div class="card" id="section-5">
     <h2><span class="num">5</span> Dispatch Documentation</h2>
-    <div class="subtext">Cross-check what's written on the dispatch/OGRA paperwork against your own observation above.</div>
+    <div class="subtext">Cross-check what's written on the dispatch OGRA Form / Meter Return Card (MRC) against your own observation above.</div>
 
     <div class="doc-item">
       <div class="q">Seal status matches document</div>
-      <div class="chip-toggle" id="docSealMatch"><button data-val="yes" class="on-ok">Yes</button><button data-val="no" class="on-bad">No</button></div>
+      <div class="chip-toggle" id="docSealMatch"><button data-val="yes">Yes</button><button data-val="no">No</button></div>
+    </div>
+
+    <div class="doc-item">
+      <div class="q">OGRA Form &amp; Meter Return Card (MRC) attached</div>
+      <div class="doc-select-group" id="docAttachStatus" data-ok="both">
+        <button data-val="both">Both</button>
+        <button data-val="ogra_missing">OGRA Form Missing</button>
+        <button data-val="mrc_missing">MRC Missing</button>
+      </div>
     </div>
 
     <div class="doc-item">
       <div class="q">Damage mentioned on document (if any)</div>
-      <div class="chip-toggle" id="docDamageMentioned"><button data-val="yes" class="on-ok">Yes</button><button data-val="no" class="on-bad">No</button><button data-val="na">N/A</button></div>
+      <div class="doc-select-group" id="docDamageMentioned" data-ok="both_mentioned" data-neutralvals="na">
+        <button data-val="na">N/A</button>
+        <button data-val="both_mentioned">Mentioned on Both</button>
+        <button data-val="both_not_mentioned">Not Mentioned on Both</button>
+        <button data-val="ogra_not_mentioned">Not Mentioned at OGRA Form</button>
+        <button data-val="mrc_not_mentioned">Not Mentioned at MRC</button>
+      </div>
     </div>
 
     <div class="doc-item">
-      <div class="q">Executive sign present</div>
-      <div class="chip-toggle" id="docExecSign"><button data-val="yes" class="on-ok">Yes</button><button data-val="no" class="on-bad">No</button></div>
+      <div class="q">Executive sign</div>
+      <div class="doc-select-group" id="docExecSign" data-ok="endorsed_both">
+        <button data-val="endorsed_both">Endorsed at Both</button>
+        <button data-val="not_endorsed_both">Not Endorsed at Both</button>
+        <button data-val="missing_ogra">Missing at OGRA Form</button>
+        <button data-val="missing_mrc">Missing at MRC</button>
+      </div>
     </div>
 
     <div class="doc-item">
-      <div class="q">Team sign present</div>
-      <div class="chip-toggle" id="docTeamSign"><button data-val="yes" class="on-ok">Yes</button><button data-val="no" class="on-bad">No</button></div>
+      <div class="q">Team sign</div>
+      <div class="doc-select-group" id="docTeamSign" data-ok="endorsed_both">
+        <button data-val="endorsed_both">Endorsed at Both</button>
+        <button data-val="not_endorsed_both">Not Endorsed at Both</button>
+        <button data-val="missing_ogra">Missing at OGRA Form</button>
+        <button data-val="missing_mrc">Missing at MRC</button>
+      </div>
     </div>
 
     <div class="doc-item">
-      <div class="q">Consumer sign present</div>
-      <div class="chip-toggle" id="docConsumerSign"><button data-val="yes" class="on-ok">Yes</button><button data-val="no" class="on-bad">No</button></div>
+      <div class="q">Consumer Name &amp; Sign</div>
+      <div class="doc-select-group" id="docConsumerNameSign" data-ok="both_mentioned">
+        <button data-val="both_mentioned">Both Mentioned</button>
+        <button data-val="name_missing">Name Missing</button>
+        <button data-val="sign_missing">Sign Missing</button>
+      </div>
     </div>
 
     <div class="doc-item">
-      <div class="q">Consumer name mentioned</div>
-      <div class="chip-toggle" id="docConsumerName"><button data-val="yes" class="on-ok">Yes</button><button data-val="no" class="on-bad">No</button></div>
+      <div class="q">Reason for Replacement</div>
+      <div class="doc-select-group" id="docReasonReplacement" data-ok="mentioned_both">
+        <button data-val="mentioned_both">Mentioned at Both OGRA and MRC</button>
+        <button data-val="missing_ogra">Missing at OGRA Form</button>
+        <button data-val="missing_mrc">Missing at MRC</button>
+      </div>
     </div>
 
     <div class="doc-item">
       <div class="q">If the consumer's name and sign are not on the OGRA Form, does it mention that the consumer or consumer's representative refused to sign?</div>
-      <div class="chip-toggle" id="docRefusalClause"><button data-val="yes" class="on-ok">Yes</button><button data-val="no" class="on-bad">No</button></div>
+      <div class="chip-toggle" id="docRefusalClause"><button data-val="yes">Yes</button><button data-val="no">No</button></div>
     </div>
 
     <div class="doc-item">
@@ -315,6 +362,14 @@
         <button data-val="without_presence">Willing Without Presence</button>
       </div>
     </div>
+
+    <label class="field-label">Document Photos (optional)</label>
+    <div class="row">
+      <button class="btn outline" onclick="openCamera('ogra')">📷 OGRA Form Photo</button>
+      <button class="btn outline" onclick="openCamera('mrc')">📷 MRC Photo</button>
+    </div>
+    <div class="thumb-row" id="ograThumb"></div>
+    <div class="thumb-row" id="mrcThumb"></div>
 
     <label class="field-label">Remarks (optional)</label>
     <textarea id="remarks" rows="2" placeholder="Any additional notes for this meter…"></textarea>
@@ -332,6 +387,16 @@
   </div>
 
   </div>
+</div>
+
+<!-- ============ STATS TAB ============ -->
+<div id="tabStats" style="display:none;">
+  <div class="card">
+    <h2>📊 Project Stats</h2>
+    <div class="subtext">Select a project to see its inspection summary.</div>
+    <div class="chip-grid" id="statsProjectChips"></div>
+  </div>
+  <div id="statsContent"></div>
 </div>
 
 <!-- ============ SETTINGS TAB ============ -->
@@ -355,9 +420,14 @@
     </p>
     <div class="banner info" style="margin-top:4px; margin-bottom:14px;">
       <b>One requirement:</b> every Sheet ID you use must belong to (or be shared with) the same Google account
-      that deployed this script — since the script writes using that account's permissions.
+      that deployed this script — since the script writes using that account's permissions. Photos get uploaded
+      into a Drive folder named after each Sheet, shared as "anyone with the link can view," and linked in these
+      4 extra columns. <b>If you already have sheets from before this version:</b> add these 4 header cells
+      manually to the end of that Sheet's <code>DMIS Receiving</code> row 1 — <code>Reading Photo URL</code>,
+      <code>Condition Photo URL</code>, <code>OGRA Photo URL</code>, <code>MRC Photo URL</code> — new Sheets get
+      this automatically.
     </div>
-    <textarea readonly rows="24" class="mono" style="font-size:11px; white-space:pre;" id="appsScriptCodeBox">function doPost(e) {
+    <textarea readonly rows="34" class="mono" style="font-size:11px; white-space:pre;" id="appsScriptCodeBox">function doPost(e) {
   var data = JSON.parse(e.postData.contents);
   var ss = SpreadsheetApp.openById(data.sheetId);
 
@@ -375,12 +445,36 @@
   if (!sheet) {
     sheet = ss.insertSheet('DMIS Receiving');
     sheet.appendRow(['Timestamp','Sr No','Meter No','Meter Type','Meter Reading',
-      'Physical Condition','Documents Status','Dispatcher Match','Project','Device','Remarks']);
+      'Physical Condition','Documents Status','Dispatcher Match','Project','Device','Remarks',
+      'Reading Photo URL','Condition Photo URL','OGRA Photo URL','MRC Photo URL']);
   }
+
+  function uploadPhoto(base64, label) {
+    if (!base64) return '';
+    try {
+      var folderName = ss.getName() + ' Photos';
+      var folders = DriveApp.getFoldersByName(folderName);
+      var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
+      var blob = Utilities.newBlob(Utilities.base64Decode(base64), 'image/jpeg',
+        label + '_' + data.meterNo + '_' + new Date().getTime() + '.jpg');
+      var file = folder.createFile(blob);
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      return file.getUrl();
+    } catch (err) {
+      return 'Upload error: ' + err.message;
+    }
+  }
+
+  var readingUrl = uploadPhoto(data.photoReading, 'reading');
+  var conditionUrl = uploadPhoto(data.photoCondition, 'condition');
+  var ograUrl = uploadPhoto(data.photoOgra, 'ogra');
+  var mrcUrl = uploadPhoto(data.photoMrc, 'mrc');
+
   sheet.appendRow([
     new Date(), data.sr, data.meterNo, data.meterType, data.reading,
     data.physicalCondition, data.documentsStatus, data.dispatcherMatch,
-    data.project, data.device, data.remarks
+    data.project, data.device, data.remarks,
+    readingUrl, conditionUrl, ograUrl, mrcUrl
   ]);
   return ContentService.createTextOutput(JSON.stringify({status:'ok'}))
     .setMimeType(ContentService.MimeType.JSON);
@@ -426,13 +520,27 @@ function doGet(e) {
 }</textarea>
     <button class="btn outline" onclick="copyAppsScriptCode()">📋 Copy Code</button>
     <div class="banner info" style="margin-top:12px;">
-      <b>Known limitation:</b> writes (Save Entry, dispatcher upload) go through <code>doPost</code>, and the
-      browser still can't read that response — it marks "Sent (unconfirmed)". Reads (Join via Code, Sync from
-      Sheet) go through <code>doGet</code> via a JSONP trick, which <b>does</b> work, so pulling existing records
-      is reliable — writing just isn't confirmable. Keep exporting Excel per project as backup regardless.
+      <b>Known limitation:</b> writes (Save Entry, dispatcher upload, photo uploads) go through <code>doPost</code>,
+      and the browser still can't read that response — it marks "Sent (unconfirmed)". Reads (Join via Code, Sync
+      from Sheet) go through <code>doGet</code> via a JSONP trick, which <b>does</b> work — so photo links only
+      appear in the app itself (not just the Sheet) after you tap <b>Sync from Sheet</b> on that project.
+      Keep exporting Excel per project as backup regardless.
       <b>OneDrive auto-export</b> has no equivalent no-login trick — that genuinely needs the Phase-2 backend
       with Microsoft sign-in.
     </div>
+  </div>
+
+  <div class="card">
+    <h2>💾 Backup / Restore Session</h2>
+    <div class="subtext">
+      <b>This solves the "data disappears on fresh open" problem.</b> Everything here lives only in this browser
+      tab — closing it or reopening the link loses it, since a webpage isn't allowed to save files on your
+      phone by itself. Export a backup file after each work session and keep it somewhere safe (WhatsApp to
+      yourself, a Files app folder); Import it next time to restore every project and record exactly as it was.
+    </div>
+    <button class="btn amber" onclick="exportSession()">⬇ Export Session Backup</button>
+    <label class="field-label">Restore from a backup file</label>
+    <input type="file" id="importSessionFile" accept=".json">
   </div>
 
   <div class="card">
@@ -540,6 +648,8 @@ let currentCameraMode = null;
 let cameraStream = null;
 let readingPhotoData = null;
 let conditionPhotoData = null;
+let ograPhotoData = null;
+let mrcPhotoData = null;
 let html5QrScanner = null;
 let scannerGotDecode = false;
 
@@ -552,11 +662,14 @@ let sealSummary = { index:{status:'intact', total:0, found:''}, body:{status:'in
 function showTab(name){
   document.getElementById('tabInspect').style.display = name==='inspect' ? 'block' : 'none';
   document.getElementById('tabProjects').style.display = name==='projects' ? 'block' : 'none';
+  document.getElementById('tabStats').style.display = name==='stats' ? 'block' : 'none';
   document.getElementById('tabSettings').style.display = name==='settings' ? 'block' : 'none';
   document.getElementById('tabBtnInspect').classList.toggle('active', name==='inspect');
   document.getElementById('tabBtnProjects').classList.toggle('active', name==='projects');
+  document.getElementById('tabBtnStats').classList.toggle('active', name==='stats');
   document.getElementById('tabBtnSettings').classList.toggle('active', name==='settings');
   if(name==='inspect') refreshInspectVisibility();
+  if(name==='stats') renderStatsProjectChips();
   window.scrollTo({top:0, behavior:'smooth'});
 }
 function refreshInspectVisibility(){
@@ -646,6 +759,50 @@ function clearAllData(){
 }
 
 /* ============================================================
+   SESSION BACKUP / RESTORE — since a webpage can't save files on
+   its own, this lets the person manually save/reload their state.
+   ============================================================ */
+function exportSession(){
+  if(projects.length===0){ alert('No projects to back up yet.'); return; }
+  const data = {
+    exportedAt: new Date().toISOString(),
+    projects: projects.map(p=>({ ...p, dispatcherSet: [...p.dispatcherSet] })),
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+  a.href = url; a.download = `DMIS_Session_Backup_${stamp}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+document.getElementById('importSessionFile').addEventListener('change', function(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = evt=>{
+    try{
+      const data = JSON.parse(evt.target.result);
+      if(!data.projects || !Array.isArray(data.projects)) throw new Error('Not a valid backup file.');
+      const restored = data.projects.map(p=>({ ...p, dispatcherSet: new Set(p.dispatcherSet||[]) }));
+      if(projects.length > 0){
+        if(!confirm(`This will replace the ${projects.length} project(s) currently loaded with ${restored.length} from the backup. Continue?`)) return;
+      }
+      projects = restored;
+      activeProjectId = null;
+      document.getElementById('projTag').textContent = 'No project open · SNGPL Faisalabad-D';
+      renderProjectList();
+      alert(`Restored ${projects.length} project(s) from backup (exported ${data.exportedAt||'unknown time'}).`);
+      showTab('projects');
+    }catch(err){
+      alert('Could not read that backup file: ' + err.message);
+    }
+    e.target.value = '';
+  };
+  reader.readAsText(file);
+});
+
+/* ============================================================
    SHARE CODE — encodes name+sheetId+scriptUrl so another device
    can "join" the same Sheet without retyping both values by hand.
    ============================================================ */
@@ -721,23 +878,34 @@ function pullRecordsFromSheet(id){
   if(statusEl) statusEl.textContent = 'Pulling records from Sheet…';
   jsonpRequest(p.appsScriptUrl, {action:'records', sheetId:p.sheetId}).then(data=>{
     const rows = (data && data.records) || [];
-    let added = 0;
+    let added = 0, updated = 0;
+    const urlCols = [
+      ['Reading Photo URL','photoReadingUrl'], ['Condition Photo URL','photoConditionUrl'],
+      ['OGRA Photo URL','photoOgraUrl'], ['MRC Photo URL','photoMrcUrl'],
+    ];
     rows.forEach(row=>{
       const meterNo = row['Meter No'];
       if(!meterNo) return;
-      const already = p.records.find(r=>r.meterNo.trim().toUpperCase()===String(meterNo).trim().toUpperCase());
-      if(already) return;
+      const match = p.records.find(r=>r.meterNo.trim().toUpperCase()===String(meterNo).trim().toUpperCase());
+      if(match){
+        let changed = false;
+        urlCols.forEach(([col,key])=>{ if(row[col] && !match[key]){ match[key]=row[col]; changed=true; } });
+        if(changed) updated++;
+        return;
+      }
       const srNum = parseInt(row['Sr No']) || 0;
       if(srNum) p.srCounter = Math.max(p.srCounter, srNum+1);
-      p.records.push({
+      const newRec = {
         sr: srNum || ('S'+(++added)), meterNo: String(meterNo), meterType: row['Meter Type']||'',
         reading: row['Meter Reading']||'', physicalCondition: row['Physical Condition']||'',
         documentsStatus: row['Documents Status']||'', remarks: row['Remarks']||'',
         dispatcherMatch: row['Dispatcher Match']||'', cloudStatus: 'Synced from sheet',
-      });
+      };
+      urlCols.forEach(([col,key])=>{ newRec[key] = row[col]||''; });
+      p.records.push(newRec);
       added++;
     });
-    if(statusEl) statusEl.textContent = `Pulled ${added} new record(s) from the Sheet.`;
+    if(statusEl) statusEl.textContent = `Pulled ${added} new, updated ${updated} record(s) (photo links included).`;
     renderProjectList();
     if(activeProjectId===id) renderRecentMini();
   }).catch(()=>{ if(statusEl) statusEl.textContent = 'Could not pull records — make sure the Apps Script includes the doGet code from Settings.'; });
@@ -754,6 +922,103 @@ function pullDispatcherFromSheet(id){
       }
     }
   }).catch(()=>{});
+}
+
+/* ============================================================
+   STATS TAB
+   ============================================================ */
+function renderStatsProjectChips(){
+  const wrap = document.getElementById('statsProjectChips');
+  if(!wrap) return;
+  if(projects.length===0){
+    wrap.innerHTML = '<div class="subtext">No projects yet.</div>';
+    document.getElementById('statsContent').innerHTML = '';
+    return;
+  }
+  wrap.innerHTML = projects.map(p=>`<button type="button" onclick="renderStatsForProject('${p.id}')">${p.name}</button>`).join('');
+  if(activeProjectId && projects.find(p=>p.id===activeProjectId)) renderStatsForProject(activeProjectId);
+}
+function statBar(label, count, total){
+  const pct = total ? Math.round(count/total*100) : 0;
+  return `<div style="margin:8px 0;">
+    <div style="display:flex; justify-content:space-between; font-size:12.5px; margin-bottom:3px;"><span>${label}</span><span>${count} / ${total} (${pct}%)</span></div>
+    <div style="background:var(--paper); border-radius:6px; height:8px; overflow:hidden;"><div style="width:${pct}%; background:var(--steel); height:100%;"></div></div>
+  </div>`;
+}
+function renderStatsForProject(id){
+  document.querySelectorAll('#statsProjectChips button').forEach(b=>{
+    const p2 = projects.find(x=>x.id===id);
+    b.classList.toggle('selected', p2 && b.textContent===p2.name);
+  });
+  const p = projects.find(x=>x.id===id);
+  const wrap = document.getElementById('statsContent');
+  if(!p){ wrap.innerHTML=''; return; }
+  const r = p.records;
+  const total = r.length;
+  if(total===0){ wrap.innerHTML = '<div class="card"><div class="subtext">No records yet for this project.</div></div>'; return; }
+
+  const catCounts = {}; r.forEach(x=>{ const c=x.category||'Unknown/Manual'; catCounts[c]=(catCounts[c]||0)+1; });
+  const aliasCounts = {}; r.forEach(x=>{ const a=x.alias||'Unknown/Manual'; aliasCounts[a]=(aliasCounts[a]||0)+1; });
+
+  const listed = r.filter(x=>x.dispatcherMatch==='Listed').length;
+  const fresh = r.filter(x=>x.dispatcherMatch==='Fresh/Unlisted').length;
+
+  const dirty = r.filter(x=>x.counterDirt==='dirty').length;
+  const glassDamaged = r.filter(x=>x.counterGlass==='damaged').length;
+  const moisture = r.filter(x=>x.counterMoisture==='yes').length;
+  const bodyDamaged = r.filter(x=>x.bodyCondition==='damaged').length;
+  const indexSealMissing = r.filter(x=>x.indexSealStatus==='missing').length;
+  const bodySealMissing = r.filter(x=>x.bodySealStatus==='missing').length;
+
+  const docsNotBothAttached = r.filter(x=>x.docAttachStatus && x.docAttachStatus!=='both').length;
+  const execSignIssue = r.filter(x=>x.docExecSign && x.docExecSign!=='endorsed_both').length;
+  const teamSignIssue = r.filter(x=>x.docTeamSign && x.docTeamSign!=='endorsed_both').length;
+  const consumerIssue = r.filter(x=>x.docConsumerNameSign && x.docConsumerNameSign!=='both_mentioned').length;
+  const reasonIssue = r.filter(x=>x.docReasonReplacement && x.docReasonReplacement!=='mentioned_both').length;
+
+  const cloudSent = r.filter(x=>/sent|synced/i.test(x.cloudStatus||'')).length;
+  const cloudFailed = r.filter(x=>/failed/i.test(x.cloudStatus||'')).length;
+  const withPhotos = r.filter(x=>x.photoReadingUrl||x.photoConditionUrl||x.photoOgraUrl||x.photoMrcUrl).length;
+
+  wrap.innerHTML = `
+    <div class="card">
+      <h2>${p.name} — Summary</h2>
+      <div class="subtext">${p.device} · ${total} meter(s) recorded</div>
+      ${statBar('Listed in dispatcher file', listed, total)}
+      ${statBar('Fresh / Unlisted', fresh, total)}
+    </div>
+    <div class="card">
+      <h2>By Category</h2>
+      ${Object.entries(catCounts).map(([k,v])=>statBar(k, v, total)).join('')}
+    </div>
+    <div class="card">
+      <h2>By Make / Alias</h2>
+      ${Object.entries(aliasCounts).map(([k,v])=>statBar(k, v, total)).join('')}
+    </div>
+    <div class="card">
+      <h2>Physical Condition Flags</h2>
+      ${statBar('Counter dirty', dirty, total)}
+      ${statBar('Counter glass damaged', glassDamaged, total)}
+      ${statBar('Moisture in index', moisture, total)}
+      ${statBar('Body damaged', bodyDamaged, total)}
+      ${statBar('Index seals missing', indexSealMissing, total)}
+      ${statBar('Body seals missing', bodySealMissing, total)}
+    </div>
+    <div class="card">
+      <h2>Documentation Compliance</h2>
+      ${statBar('OGRA + MRC not both attached', docsNotBothAttached, total)}
+      ${statBar('Executive sign issue', execSignIssue, total)}
+      ${statBar('Team sign issue', teamSignIssue, total)}
+      ${statBar('Consumer name/sign issue', consumerIssue, total)}
+      ${statBar('Reason for replacement missing', reasonIssue, total)}
+    </div>
+    <div class="card">
+      <h2>Cloud &amp; Photos</h2>
+      ${statBar('Synced to Sheet', cloudSent, total)}
+      ${statBar('Send failed', cloudFailed, total)}
+      ${statBar('Has at least one photo link', withPhotos, total)}
+    </div>
+  `;
 }
 
 function renderProjectList(){
@@ -956,23 +1221,38 @@ function setSealStatus(kind, val, btnEl){
   document.getElementById(kind==='index' ? 'indexFoundWrap' : 'bodyFoundWrap').style.display = (val==='missing') ? 'block' : 'none';
 }
 
+function classifyToggleColor(group, val){
+  if(group.hasAttribute('data-neutral')) return 'neutral';
+  const neutralVals = (group.getAttribute('data-neutralvals')||'').split(',').filter(Boolean);
+  if(neutralVals.includes(val)) return 'neutral';
+  const okAttr = group.getAttribute('data-ok');
+  if(okAttr !== null) return okAttr.split(',').filter(Boolean).includes(val) ? 'ok' : 'bad';
+  if(val==='ok'||val==='yes'||val==='clean') return 'ok';
+  if(val==='na') return 'neutral';
+  return 'bad';
+}
+function applyToggleColor(btn, color){
+  btn.classList.remove('on-ok','on-bad','on-neutral');
+  if(color==='ok') btn.classList.add('on-ok');
+  else if(color==='neutral') btn.classList.add('on-neutral');
+  else if(color==='bad') btn.classList.add('on-bad');
+}
 function wireStaticToggles(){
-  document.querySelectorAll('.chip-toggle').forEach(group=>{
+  document.querySelectorAll('.chip-toggle, .doc-select-group').forEach(group=>{
     if(group.id==='idxSealStatus' || group.id==='bodySealStatus') return;
-    const isNeutral = group.hasAttribute('data-neutral');
     group.querySelectorAll('button').forEach(btn=>{
       btn.addEventListener('click', ()=>{
         [...group.children].forEach(b=>b.classList.remove('on-ok','on-bad','on-neutral'));
         const val = btn.getAttribute('data-val');
-        if(isNeutral) btn.classList.add('on-neutral');
-        else if(val==='ok'||val==='yes'||val==='clean') btn.classList.add('on-ok');
-        else if(val==='na'){ }
-        else btn.classList.add('on-bad');
+        applyToggleColor(btn, classifyToggleColor(group, val));
         group.setAttribute('data-current', val);
       });
     });
-    const pre = group.querySelector('.on-ok, .on-neutral');
-    if(pre) group.setAttribute('data-current', pre.getAttribute('data-val'));
+    const pre = group.querySelector('button[data-default="true"]');
+    if(pre){
+      applyToggleColor(pre, classifyToggleColor(group, pre.getAttribute('data-val')));
+      group.setAttribute('data-current', pre.getAttribute('data-val'));
+    }
   });
 }
 wireStaticToggles();
@@ -1133,7 +1413,8 @@ function closeScanner(){
    ============================================================ */
 function openCamera(mode){
   currentCameraMode = mode;
-  document.getElementById('cameraModalTitle').textContent = mode==='reading' ? 'Capture Meter Reading' : 'Capture Condition Photo';
+  const titles = { reading:'Capture Meter Reading', condition:'Capture Condition Photo', ogra:'Capture OGRA Form Photo', mrc:'Capture MRC Photo' };
+  document.getElementById('cameraModalTitle').textContent = titles[mode] || 'Capture Photo';
   document.getElementById('cameraModal').classList.add('open');
   navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width:{ideal:1920}, height:{ideal:1080} } })
     .then(stream=>{ cameraStream = stream; document.getElementById('camVideo').srcObject = stream; })
@@ -1153,9 +1434,15 @@ function capturePhoto(){
     readingPhotoData = dataUrl;
     document.getElementById('readingThumb').innerHTML = `<div class="thumb"><img src="${dataUrl}"></div>`;
     tryOcr(dataUrl);
-  } else {
+  } else if(currentCameraMode === 'condition'){
     conditionPhotoData = dataUrl;
     document.getElementById('conditionThumb').innerHTML = `<div class="thumb"><img src="${dataUrl}"></div>`;
+  } else if(currentCameraMode === 'ogra'){
+    ograPhotoData = dataUrl;
+    document.getElementById('ograThumb').innerHTML = `<div class="thumb"><img src="${dataUrl}"></div>`;
+  } else if(currentCameraMode === 'mrc'){
+    mrcPhotoData = dataUrl;
+    document.getElementById('mrcThumb').innerHTML = `<div class="thumb"><img src="${dataUrl}"></div>`;
   }
   closeCamera();
 }
@@ -1326,20 +1613,41 @@ document.getElementById('readFrac').addEventListener('input', function(){ update
 function summarizeCondition(){
   const dirt = getToggleVal('tgCounterDirt') || 'clean';
   const glass = getToggleVal('tgGlass') || 'ok';
+  const moisture = getToggleVal('tgMoisture') || 'no';
   const body = getToggleVal('tgBody') || 'ok';
   const idx = sealSummary.index, bd = sealSummary.body;
   const idxStr = idx.total ? (idx.status==='missing' ? `Index Seals: ${idx.found||'0'}/${idx.total} found (MISSING)` : `Index Seals: ${idx.total}/${idx.total} intact`) : 'Index Seals: N/A';
   const bdStr = bd.total ? (bd.status==='missing' ? `Body Seals: ${bd.found||'0'}/${bd.total} found (MISSING)` : `Body Seals: ${bd.total}/${bd.total} intact`) : 'Body Seals: N/A';
-  return `Counter:${dirt}; Glass:${glass}; Body:${body}; ${idxStr}; ${bdStr}`;
+  return `Counter:${dirt}; Glass:${glass}; Moisture:${moisture}; Body:${body}; ${idxStr}; ${bdStr}`;
 }
 function summarizeDocs(){
   const parts = [
-    ['SealMatch', getToggleVal('docSealMatch')], ['DamageMentioned', getToggleVal('docDamageMentioned')],
-    ['ExecSign', getToggleVal('docExecSign')], ['TeamSign', getToggleVal('docTeamSign')],
-    ['ConsumerSign', getToggleVal('docConsumerSign')], ['ConsumerName', getToggleVal('docConsumerName')],
-    ['RefusalClause', getToggleVal('docRefusalClause')], ['ConsumerInspStatus', getToggleVal('docConsumerInspStatus')],
+    ['SealMatch', getToggleVal('docSealMatch')], ['DocsAttached', getToggleVal('docAttachStatus')],
+    ['DamageMentioned', getToggleVal('docDamageMentioned')], ['ExecSign', getToggleVal('docExecSign')],
+    ['TeamSign', getToggleVal('docTeamSign')], ['ConsumerNameSign', getToggleVal('docConsumerNameSign')],
+    ['ReasonForReplacement', getToggleVal('docReasonReplacement')], ['RefusalClause', getToggleVal('docRefusalClause')],
+    ['ConsumerInspStatus', getToggleVal('docConsumerInspStatus')],
   ];
   return parts.map(([k,v])=>`${k}:${v||'-'}`).join('; ');
+}
+
+/* Downscales + compresses a captured photo before upload, to keep field uploads fast on weak connections.
+   Returns base64 (no data: prefix) via Promise, or null if no image was given. */
+function compressImageForUpload(dataUrl, maxW, quality){
+  return new Promise((resolve)=>{
+    if(!dataUrl){ resolve(null); return; }
+    const img = new Image();
+    img.onload = ()=>{
+      const scale = Math.min(1, maxW/img.width);
+      const w = Math.max(1, Math.round(img.width*scale)), h = Math.max(1, Math.round(img.height*scale));
+      const c = document.createElement('canvas'); c.width=w; c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      try{ resolve(c.toDataURL('image/jpeg', quality).split(',')[1]); }
+      catch(e){ resolve(null); }
+    };
+    img.onerror = ()=>resolve(null);
+    img.src = dataUrl;
+  });
 }
 
 function saveRecord(){
@@ -1364,26 +1672,59 @@ function saveRecord(){
   const reading = whole ? `${whole}.${frac} m³` : '';
 
   const rec = {
-    sr: p.srCounter++, meterNo, meterType, reading,
+    sr: p.srCounter++, meterNo, category:cat, alias, variant, meterType, reading,
+    dispatcherMatch: p.dispatcherSet.size ? (p.dispatcherSet.has(meterNo.toUpperCase()) ? 'Listed' : 'Fresh/Unlisted') : 'N/A',
+    // raw condition fields (for Stats)
+    counterDirt: getToggleVal('tgCounterDirt') || 'clean',
+    counterGlass: getToggleVal('tgGlass') || 'ok',
+    counterMoisture: getToggleVal('tgMoisture') || 'no',
+    bodyCondition: getToggleVal('tgBody') || 'ok',
+    indexSealStatus: sealSummary.index.status, indexSealTotal: sealSummary.index.total, indexSealFound: sealSummary.index.found,
+    bodySealStatus: sealSummary.body.status, bodySealTotal: sealSummary.body.total, bodySealFound: sealSummary.body.found,
     physicalCondition: summarizeCondition(),
+    // raw documentation fields (for Stats)
+    docSealMatch: getToggleVal('docSealMatch'), docAttachStatus: getToggleVal('docAttachStatus'),
+    docDamageMentioned: getToggleVal('docDamageMentioned'), docExecSign: getToggleVal('docExecSign'),
+    docTeamSign: getToggleVal('docTeamSign'), docConsumerNameSign: getToggleVal('docConsumerNameSign'),
+    docReasonReplacement: getToggleVal('docReasonReplacement'), docRefusalClause: getToggleVal('docRefusalClause'),
+    docConsumerInspStatus: getToggleVal('docConsumerInspStatus'),
     documentsStatus: summarizeDocs(),
     remarks: document.getElementById('remarks').value.trim(),
-    dispatcherMatch: p.dispatcherSet.size ? (p.dispatcherSet.has(meterNo.toUpperCase()) ? 'Listed' : 'Fresh/Unlisted') : 'N/A',
-    cloudStatus: p.appsScriptUrl ? 'Sending…' : 'Not configured',
+    cloudStatus: 'Preparing…',
+    // full-res photo data kept in memory so Retry Sync can always re-upload
+    photoReadingData: readingPhotoData, photoConditionData: conditionPhotoData,
+    photoOgraData: ograPhotoData, photoMrcData: mrcPhotoData,
+    photoReadingUrl:'', photoConditionUrl:'', photoOgraUrl:'', photoMrcUrl:'',
   };
   p.records.push(rec);
-  syncToSheet(p, rec);
   renderProjectList();
   renderRecentMini();
   resetForm(true);
   playBeep(1200,120);
+
+  Promise.all([
+    compressImageForUpload(rec.photoReadingData, 900, 0.55),
+    compressImageForUpload(rec.photoConditionData, 900, 0.55),
+    compressImageForUpload(rec.photoOgraData, 1100, 0.6),
+    compressImageForUpload(rec.photoMrcData, 1100, 0.6),
+  ]).then(([rB64,cB64,oB64,mB64])=>{
+    syncToSheet(p, rec, { reading:rB64, condition:cB64, ogra:oB64, mrc:mB64 });
+  }).catch(()=>{ syncToSheet(p, rec, {}); });
 }
 
-function syncToSheet(p, rec){
-  if(!p.appsScriptUrl || !p.sheetId){ rec.cloudStatus = 'Not configured'; return; }
+function syncToSheet(p, rec, photos){
+  if(!p.appsScriptUrl || !p.sheetId){ rec.cloudStatus = 'Not configured'; renderProjectList(); return; }
   const payload = { sheetId:p.sheetId, sr:rec.sr, meterNo:rec.meterNo, meterType:rec.meterType, reading:rec.reading,
     physicalCondition:rec.physicalCondition, documentsStatus:rec.documentsStatus,
     dispatcherMatch:rec.dispatcherMatch, project:p.name, device:p.device, remarks:rec.remarks };
+  if(photos){
+    if(photos.reading) payload.photoReading = photos.reading;
+    if(photos.condition) payload.photoCondition = photos.condition;
+    if(photos.ogra) payload.photoOgra = photos.ogra;
+    if(photos.mrc) payload.photoMrc = photos.mrc;
+  }
+  rec.cloudStatus = 'Sending…';
+  renderProjectList();
   fetch(p.appsScriptUrl, { method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify(payload) })
     .then(()=>{ rec.cloudStatus = 'Sent (unconfirmed — check sheet)'; renderProjectList(); })
     .catch(()=>{ rec.cloudStatus = 'Send failed — check URL'; renderProjectList(); });
@@ -1395,7 +1736,14 @@ function retrySyncRecord(projId, sr){
   if(!rec) return;
   rec.cloudStatus = 'Sending…';
   renderProjectList();
-  syncToSheet(p, rec);
+  Promise.all([
+    compressImageForUpload(rec.photoReadingData, 900, 0.55),
+    compressImageForUpload(rec.photoConditionData, 900, 0.55),
+    compressImageForUpload(rec.photoOgraData, 1100, 0.6),
+    compressImageForUpload(rec.photoMrcData, 1100, 0.6),
+  ]).then(([rB64,cB64,oB64,mB64])=>{
+    syncToSheet(p, rec, { reading:rB64, condition:cB64, ogra:oB64, mrc:mB64 });
+  }).catch(()=>{ syncToSheet(p, rec, {}); });
 }
 
 function renderRecentMini(){
@@ -1417,7 +1765,10 @@ function exportProjectExcel(id){
     'Sr. No.': r.sr, 'Meter No.': r.meterNo, 'Meter Type': r.meterType, 'Meter Reading': r.reading,
     'Physically Condition of Meters': r.physicalCondition, 'Documents Status': r.documentsStatus,
     'Dispatcher Match': r.dispatcherMatch, 'Project': p.name, 'Device': p.device,
-    'Cloud Status': r.cloudStatus, 'Remarks': r.remarks,
+    'Cloud Status': r.cloudStatus,
+    'Reading Photo': r.photoReadingUrl||'', 'Condition Photo': r.photoConditionUrl||'',
+    'OGRA Form Photo': r.photoOgraUrl||'', 'MRC Photo': r.photoMrcUrl||'',
+    'Remarks': r.remarks,
   }));
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
@@ -1455,16 +1806,22 @@ function resetForm(keepProjectsUntouched){
   updateReadout();
   document.getElementById('readingThumb').innerHTML = '';
   document.getElementById('conditionThumb').innerHTML = '';
+  document.getElementById('ograThumb').innerHTML = '';
+  document.getElementById('mrcThumb').innerHTML = '';
   document.getElementById('ocrStatus').textContent = '';
   document.getElementById('remarks').value = '';
-  readingPhotoData = null; conditionPhotoData = null;
+  readingPhotoData = null; conditionPhotoData = null; ograPhotoData = null; mrcPhotoData = null;
 
-  document.querySelectorAll('.chip-toggle').forEach(group=>{
+  document.querySelectorAll('.chip-toggle, .doc-select-group').forEach(group=>{
     if(group.id==='idxSealStatus' || group.id==='bodySealStatus') return;
-    [...group.children].forEach(b=>b.classList.remove('on-ok','on-bad'));
-    const pre = group.querySelector('button[data-val="clean"], button[data-val="ok"]');
-    if(pre){ pre.classList.add('on-ok'); group.setAttribute('data-current', pre.getAttribute('data-val')); }
-    else group.removeAttribute('data-current');
+    [...group.children].forEach(b=>b.classList.remove('on-ok','on-bad','on-neutral'));
+    const pre = group.querySelector('button[data-default="true"]');
+    if(pre){
+      applyToggleColor(pre, classifyToggleColor(group, pre.getAttribute('data-val')));
+      group.setAttribute('data-current', pre.getAttribute('data-val'));
+    } else {
+      group.removeAttribute('data-current');
+    }
   });
   window.scrollTo({top:0, behavior:'smooth'});
 }
