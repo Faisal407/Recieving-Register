@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1037,6 +1038,35 @@ function registerProjectInRegistry(p){
       createdAt:p.createdAt, mrvNo:p.mrvNo||'' })
   }).catch(()=>{});
 }
+function manualRegisterProject(id){
+  const p = projects.find(x=>x.id===id);
+  const statusEl = document.getElementById('pcStatus-'+id);
+  if(!registrySheetId){
+    if(statusEl) statusEl.textContent = '⚠ No Auto-Restore registry configured yet — set it up in Settings first, then try again.';
+    return;
+  }
+  if(!p.sheetId || !p.appsScriptUrl){
+    if(statusEl) statusEl.textContent = '⚠ This project needs its own Sheet ID and Apps Script URL saved first.';
+    return;
+  }
+  if(statusEl) statusEl.textContent = 'Sending to registry…';
+  fetch(p.appsScriptUrl, {
+    method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({ action:'registerProject', sheetId:registrySheetId, name:p.name, projectSheetId:p.sheetId,
+      createdAt:p.createdAt, mrvNo:p.mrvNo||'' })
+  }).then(()=>{
+    // Writes can't be confirmed directly (no-cors) — so read the registry back to actually verify it landed.
+    if(statusEl) statusEl.textContent = 'Sent — verifying…';
+    return jsonpRequest(p.appsScriptUrl, {action:'listProjects', sheetId:registrySheetId});
+  }).then(data=>{
+    const found = ((data && data.projects) || []).some(item=>item.sheetId===p.sheetId);
+    if(statusEl) statusEl.textContent = found
+      ? '✓ Confirmed — this project is in your Auto-Restore list.'
+      : '⚠ Sent, but not showing up in the registry yet — check the Registry Sheet ID in Settings is correct.';
+  }).catch(()=>{
+    if(statusEl) statusEl.textContent = '⚠ Could not reach the Apps Script — check the URL and your connection.';
+  });
+}
 function restoreProjectsFromRegistry(regId, scriptUrl, attempt){
   attempt = attempt || 1;
   registrySheetId = regId; registryScriptUrl = scriptUrl;
@@ -1296,6 +1326,7 @@ function renderProjectList(){
           <button class="btn outline small" onclick="copyShareCode('${p.id}')">🔗 Copy Share Code</button>
           <button class="btn outline small" onclick="pullRecordsFromSheet('${p.id}')">🔄 Sync from Sheet</button>
         </div>
+        <button class="btn outline small" style="margin-top:8px;" onclick="manualRegisterProject('${p.id}')">📋 Register in Auto-Restore List</button>
         <div class="ocr-status" id="pcStatus-${p.id}"></div>
       </div>
 
