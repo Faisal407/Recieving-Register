@@ -10,6 +10,7 @@
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
 <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <style>
   :root{
     --ink:#151c26; --steel:#22384a; --steel-2:#2f4d63; --steel-light:#5c86a3;
@@ -99,6 +100,8 @@
   .thumb{width:64px; height:64px; border-radius:8px; overflow:hidden; border:1.5px solid var(--line);}
   .thumb img{width:100%; height:100%; object-fit:cover;}
   .thumb-remove{position:absolute; top:-7px; right:-7px; width:20px; height:20px; border-radius:999px; background:var(--warn); color:#fff; border:2px solid #fff; font-size:11px; line-height:1; cursor:pointer; padding:0;}
+  .code-box{background:var(--paper); border:1.5px solid var(--line); border-radius:9px; padding:10px 12px;}
+  .code-box .code{font-family:'IBM Plex Mono',monospace; color:var(--ink);}
 
   .modal-backdrop{position:fixed; inset:0; background:rgba(10,15,20,.86); z-index:100; display:none; align-items:center; justify-content:center; padding:16px;}
   .modal-backdrop.open{display:flex;}
@@ -768,16 +771,44 @@ function doGet(e) {
   <div class="modal-box">
     <h3>Join Project via Code</h3>
     <div class="subtext">
-      Paste the Share Code from the other device's project card. This links your device to the
-      <b>same Google Sheet</b> and pulls in the records already saved there — that's how sharing works
-      here, since there's no login/backend involved.
+      Scan the QR code from the other device's project card, or paste the Share Code text instead. This
+      links your device to the <b>same Google Sheet</b> and pulls in the records already saved there — that's
+      how sharing works here, since there's no login/backend involved. The code also carries the project's
+      MR/MRV No. and creation date, so photos your device uploads land in the <b>same</b> Drive folder as the
+      original device's, instead of a separate one.
     </div>
-    <label class="field-label">Share Code</label>
-    <textarea id="joinCodeInput" rows="3" placeholder="Paste the code here…"></textarea>
     <label class="field-label">Your Device Name</label>
     <input type="text" id="joinDeviceName" placeholder="e.g. Inspector-2 Phone">
-    <button class="btn amber" onclick="joinProjectFromCode()">Join &amp; Pull Records</button>
+    <button class="btn amber" onclick="openJoinQrScanner()">📷 Scan QR Code</button>
+    <label class="field-label" style="margin-top:14px;">— or paste the Share Code text —</label>
+    <textarea id="joinCodeInput" rows="3" placeholder="Paste the code here…"></textarea>
+    <button class="btn outline" onclick="joinProjectFromCode()">Join &amp; Pull Records</button>
     <button class="btn outline" onclick="closeJoinProjectModal()">Cancel</button>
+  </div>
+</div>
+
+<!-- Share Project modal (QR code + text fallback) -->
+<div class="modal-backdrop" id="shareProjectModal">
+  <div class="modal-box">
+    <h3>Share Project</h3>
+    <div class="subtext">Have the other device open <b>Join via Code</b> and scan this — or send the text code below (WhatsApp/SMS) if scanning isn't convenient.</div>
+    <div style="display:flex; justify-content:center; margin:14px 0;">
+      <canvas id="shareQrCanvas" style="max-width:100%; border-radius:10px;"></canvas>
+    </div>
+    <label class="field-label">Share Code (text fallback)</label>
+    <div class="code-box"><span class="code" id="shareCodeText" style="font-size:11px; word-break:break-all;"></span></div>
+    <button class="btn amber" style="margin-top:8px;" onclick="copyShareCodeText()">📋 Copy Code Text</button>
+    <button class="btn outline" onclick="closeShareModal()">Close</button>
+  </div>
+</div>
+
+<!-- QR scanner modal for Join via Code -->
+<div class="modal-backdrop" id="joinQrScannerModal">
+  <div class="modal-box">
+    <h3>Scan Project QR Code</h3>
+    <div class="subtext">Point the camera at the QR code shown on the other device's "Share Project" screen.</div>
+    <div id="join-qr-reader"></div>
+    <button class="btn outline" onclick="closeJoinQrScanner()">Cancel</button>
   </div>
 </div>
 
@@ -1034,20 +1065,64 @@ document.getElementById('importSessionFile').addEventListener('change', function
    can "join" the same Sheet without retyping both values by hand.
    ============================================================ */
 function encodeShareCode(p){
-  try{ return btoa(unescape(encodeURIComponent(JSON.stringify({ n:p.name, s:p.sheetId||'', u:p.appsScriptUrl||'' })))); }
+  try{ return btoa(unescape(encodeURIComponent(JSON.stringify({
+    n:p.name, s:p.sheetId||'', u:p.appsScriptUrl||'', m:p.mrvNo||'', d:p.createdDateShort||''
+  })))); }
   catch(e){ return ''; }
 }
 function decodeShareCode(code){
   try{ return JSON.parse(decodeURIComponent(escape(atob(code.trim())))); }
   catch(e){ return null; }
 }
-function copyShareCode(id){
+let shareModalCode = '';
+function openShareModal(id){
   const p = projects.find(x=>x.id===id);
   const code = encodeShareCode(p);
   if(!code){ alert('Could not generate a Share Code.'); return; }
-  navigator.clipboard.writeText(code).then(()=>{
-    alert('Share Code copied. Send it (WhatsApp/SMS) to the other device — they use "Join via Code" on the Projects tab.');
-  }).catch(()=>{ prompt('Copy this Share Code manually:', code); });
+  shareModalCode = code;
+  document.getElementById('shareCodeText').textContent = code;
+  document.getElementById('shareProjectModal').classList.add('open');
+  const canvas = document.getElementById('shareQrCanvas');
+  if(window.QRCode){
+    QRCode.toCanvas(canvas, code, { width: 260, margin: 1 }, function(err){
+      if(err){ canvas.style.display = 'none'; }
+      else { canvas.style.display = 'block'; }
+    });
+  } else {
+    canvas.style.display = 'none';
+  }
+}
+function closeShareModal(){ document.getElementById('shareProjectModal').classList.remove('open'); }
+function copyShareCodeText(){
+  if(!shareModalCode) return;
+  navigator.clipboard.writeText(shareModalCode).then(()=>{
+    alert('Share Code text copied — send it via WhatsApp/SMS if scanning isn\'t convenient.');
+  }).catch(()=>{ prompt('Copy this Share Code manually:', shareModalCode); });
+}
+
+let joinQrScanner = null;
+function openJoinQrScanner(){
+  document.getElementById('joinQrScannerModal').classList.add('open');
+  joinQrScanner = new Html5Qrcode("join-qr-reader", { formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE], verbose:false });
+  joinQrScanner.start(
+    { facingMode: "environment" },
+    { fps: 10, qrbox: { width: 250, height: 250 } },
+    (decodedText)=>{
+      document.getElementById('joinCodeInput').value = decodedText;
+      closeJoinQrScanner();
+      const device = document.getElementById('joinDeviceName').value.trim();
+      if(device){ joinProjectFromCode(); }
+      else { alert('QR code scanned — enter your Device Name, then tap "Join & Pull Records".'); }
+    },
+    ()=>{ }
+  ).catch(err=>{
+    alert('Could not start camera for scanning: ' + err);
+    closeJoinQrScanner();
+  });
+}
+function closeJoinQrScanner(){
+  document.getElementById('joinQrScannerModal').classList.remove('open');
+  if(joinQrScanner){ joinQrScanner.stop().then(()=>joinQrScanner.clear()).catch(()=>{}); joinQrScanner = null; }
 }
 
 function openJoinProjectModal(){ document.getElementById('joinProjectModal').classList.add('open'); }
@@ -1064,11 +1139,15 @@ function joinProjectFromCode(){
   const proj = {
     id: 'p_' + Date.now() + Math.floor(Math.random()*1000),
     name: decoded.n || 'Joined Project', device, sheetId: decoded.s||'', appsScriptUrl: decoded.u||'',
+    mrvNo: decoded.m||'',
     records: [], dispatcherSet: new Set(), srCounter: 1,
     createdAt: new Date().toLocaleString(),
+    createdDateShort: decoded.d || new Date().toISOString().slice(0,10),
   };
   projects.push(proj);
   activeProjectId = proj.id;
+  if(proj.appsScriptUrl) entriesDefaultScriptUrl = proj.appsScriptUrl;
+  if(registryScriptUrl && registrySheetId && proj.sheetId && proj.appsScriptUrl) registerProjectInRegistry(proj);
   closeJoinProjectModal();
   renderProjectList();
   if(proj.appsScriptUrl){
@@ -1437,7 +1516,7 @@ function renderProjectList(){
           <button class="btn amber small" onclick="saveProjectCloudSettings('${p.id}')">Save</button>
         </div>
         <div class="row" style="margin-top:8px;">
-          <button class="btn outline small" onclick="copyShareCode('${p.id}')">🔗 Copy Share Code</button>
+          <button class="btn outline small" onclick="openShareModal('${p.id}')">🔗 Share Project (QR / Code)</button>
           <button class="btn outline small" onclick="pullRecordsFromSheet('${p.id}')">🔄 Sync from Sheet</button>
         </div>
         <button class="btn outline small" style="margin-top:8px;" onclick="manualRegisterProject('${p.id}')">📋 Register in Auto-Restore List</button>
