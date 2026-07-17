@@ -306,9 +306,10 @@
     <div class="doc-item">
       <div class="q">OGRA Form &amp; Meter Return Card (MRC) attached</div>
       <div class="doc-select-group" id="docAttachStatus" data-ok="both">
-        <button data-val="both">Both</button>
-        <button data-val="ogra_missing">OGRA Form Missing</button>
-        <button data-val="mrc_missing">MRC Missing</button>
+        <button data-val="both">Both OGRA and MRC Attached</button>
+        <button data-val="ogra_missing">OGRA Form Not Attached</button>
+        <button data-val="mrc_missing">MRC Not Attached</button>
+        <button data-val="both_missing">Both Are Not Attached</button>
       </div>
     </div>
 
@@ -368,9 +369,10 @@
 
     <div class="doc-item">
       <div class="q">OGRA Form — consumer status regarding inspection</div>
-      <div class="chip-toggle" id="docConsumerInspStatus" data-neutral="true">
+      <div class="doc-select-group" id="docConsumerInspStatus" data-neutralvals="with_presence,without_presence">
         <button data-val="with_presence">Wants Presence</button>
         <button data-val="without_presence">Willing Without Presence</button>
+        <button data-val="not_mentioned">Nothing Mentioned</button>
       </div>
     </div>
 
@@ -574,11 +576,15 @@ function output(result, callback) {
       Sheet's <code>DMIS Receiving</code> row 1 — <code>MR/MRV No.</code>, <code>Reading Photo URLs</code>,
       <code>Condition Photo URLs</code>, <code>OGRA Photo URLs</code>, <code>MRC Photo URLs</code> — new Sheets
       get this automatically.
+      <b>New:</b> every save now also writes a condensed, anomaly-only row into a second tab called
+      <code>List For Print</code> in the same Sheet — <code>DMIS Receiving</code> keeps every field exactly as
+      before, unchanged. This only applies to entries saved from now on; nothing already in your Sheets gets
+      backfilled.
       <b>To grant Drive access:</b> in the function dropdown next to ▶ Run, select
       <code>authorizeDriveAccess</code> — not <code>doPost</code>, since doPost exits before touching Drive when
       run manually and will never trigger the permission prompt — then click Run and approve the popup.
     </div>
-    <textarea readonly rows="63" class="mono" style="font-size:11px; white-space:pre;" id="appsScriptCodeBox">function authorizeDriveAccess() {
+    <textarea readonly rows="80" class="mono" style="font-size:11px; white-space:pre;" id="appsScriptCodeBox">function authorizeDriveAccess() {
   // Run THIS specific function once manually (select it in the dropdown next to ▶ Run) to trigger
   // the Drive permission prompt. doPost can't trigger it, since it exits immediately before ever
   // touching Drive when run manually with no real request data.
@@ -660,8 +666,58 @@ function doPost(e) {
     data.project, data.device, data.mrvNo || '', data.remarks,
     readingUrls, conditionUrls, ograUrls, mrcUrls
   ]);
+
+  try {
+    appendToPrintSheet(ss, data);
+  } catch (printErr) {
+    // Never let a print-sheet problem block the main save — it already succeeded above.
+    Logger.log('List For Print write failed: ' + printErr.message);
+  }
+
   return ContentService.createTextOutput(JSON.stringify({status:'ok'}))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+// Writes one row into "List For Print" — a condensed, anomaly-only register formatted for
+// printing — while keeping the DMIS/Dispatch/Technical Officer signature block pinned to the
+// true bottom of the sheet every time a new entry is added.
+function appendToPrintSheet(ss, data) {
+  var sheet = ss.getSheetByName('List For Print');
+  if (!sheet) {
+    sheet = ss.insertSheet('List For Print');
+    sheet.appendRow(['Meter Receiving Register']);
+    sheet.getRange(1, 1, 1, 6).merge().setFontWeight('bold').setFontSize(14).setHorizontalAlignment('center');
+    sheet.appendRow(['MR No: ' + (data.mrvNo || '-'), '', 'Date: ' + (data.projectDate || '-'), '',
+      'Meter Dispatch Section Name: ' + (data.project || '-'), '']);
+    sheet.getRange(2, 1, 1, 6).setFontWeight('bold');
+    sheet.appendRow([]);
+    sheet.appendRow(['Sr. No.', 'Meter No.', 'Meter Type', 'Meter Reading',
+      'Physically Condition of Meters', 'Documents Status']);
+    sheet.getRange(4, 1, 1, 6).setFontWeight('bold').setBackground('#eef1f3');
+    for (var c = 1; c <= 6; c++) sheet.setColumnWidth(c, c <= 2 ? 90 : c === 5 || c === 6 ? 220 : 130);
+  } else {
+    // Find and remove the existing signature block so the new row lands right above it.
+    var values = sheet.getDataRange().getValues();
+    var sigStartRow = -1;
+    for (var r = 0; r < values.length; r++) {
+      if (String(values[r][0]).indexOf('DMIS Representative') !== -1) { sigStartRow = r + 1; break; }
+    }
+    if (sigStartRow > 0) {
+      sheet.deleteRows(sigStartRow, sheet.getLastRow() - sigStartRow + 1);
+    }
+  }
+
+  sheet.appendRow([
+    data.sr, data.meterNo, data.meterType, data.reading,
+    data.printPhysicalRemarks || '-', data.printDocumentsRemarks || '-'
+  ]);
+
+  sheet.appendRow([]);
+  sheet.appendRow([]);
+  sheet.appendRow(['DMIS Representative Sign: ____________________', '',
+    'Meter Dispatch Section Representative Sign: ____________________', '',
+    'Technical Officer (Metering) Sign: ____________________', '']);
+  sheet.getRange(sheet.getLastRow(), 1, 1, 6).setFontWeight('bold');
 }
 
 function doGet(e) {
@@ -2113,6 +2169,63 @@ function summarizeDocs(){
   return parts.map(([k,v])=>`${k}:${v||'-'}`).join('; ');
 }
 
+/* ============================================================
+   PRINT-SHEET REMARKS — plain-language anomaly-only summaries for
+   the "List For Print" tab. Physical Condition shows "-" if nothing
+   is wrong and no free-text remarks were entered. Documents Status
+   always carries the consumer presence line, plus any anomalies.
+   ============================================================ */
+function buildPrintPhysicalRemarks(rec){
+  const parts = [];
+  if(rec.counterGlass==='damaged') parts.push('Index Counter damage');
+  if(rec.counterDirt==='dirty') parts.push('Index Counter dirty');
+  if(rec.counterMoisture==='yes') parts.push('there is moisture');
+  if(rec.indexSealStatus==='missing') parts.push(`${rec.indexSealFound||0}/${rec.indexSealTotal||0} Index seals missing`);
+  if(rec.bodyCondition==='damaged') parts.push('Body damage');
+  if(rec.bodySealStatus==='missing') parts.push(`${rec.bodySealFound||0}/${rec.bodySealTotal||0} Body seals missing`);
+  if(rec.remarks && rec.remarks.trim()) parts.push(rec.remarks.trim());
+  return parts.length ? parts.join(' ') : '-';
+}
+function buildPrintDocumentsRemarks(rec){
+  const parts = [];
+
+  if(rec.docAttachStatus==='ogra_missing') parts.push('OGRA Form missing');
+  else if(rec.docAttachStatus==='mrc_missing') parts.push('MRC missing');
+  else if(rec.docAttachStatus==='both_missing') parts.push('Both OGRA/MRC Form are not attached');
+
+  if(rec.docDamageMentioned && rec.docDamageMentioned!=='na' && rec.docDamageMentioned!=='both_mentioned'){
+    const damaged = [];
+    if(rec.counterGlass==='damaged') damaged.push('Index Counter damage');
+    if(rec.bodyCondition==='damaged') damaged.push('Meter body damage');
+    if(!damaged.length) damaged.push('Damage');
+    const where = rec.docDamageMentioned==='ogra_not_mentioned' ? 'on OGRA Form'
+      : rec.docDamageMentioned==='mrc_not_mentioned' ? 'on MRC' : 'on document';
+    damaged.forEach(d=>parts.push(`${d} not mentioned ${where}`));
+  }
+
+  if(rec.docExecSign==='not_endorsed_both') parts.push('Executive sign missing on both');
+  else if(rec.docExecSign==='missing_ogra') parts.push('Executive sign missing at OGRA Form');
+  else if(rec.docExecSign==='missing_mrc') parts.push('Executive sign missing at MRC');
+
+  if(rec.docTeamSign==='not_endorsed_both') parts.push('Team sign missing on both');
+  else if(rec.docTeamSign==='missing_ogra') parts.push('Team sign missing at OGRA Form');
+  else if(rec.docTeamSign==='missing_mrc') parts.push('Team sign missing at MRC');
+
+  if(rec.docConsumerNameSign==='name_missing' || rec.docConsumerNameSign==='sign_missing'){
+    parts.push('Consumer name/sign missing at OGRA Form');
+  }
+
+  if(rec.docReasonReplacement==='missing_ogra') parts.push('Reason for replacement missing at OGRA Form');
+  else if(rec.docReasonReplacement==='missing_mrc') parts.push('Reason for replacement missing at MRC');
+
+  // Always present, last — only "not_mentioned" (or blank) counts as an anomaly.
+  if(rec.docConsumerInspStatus==='with_presence') parts.push('Consumer wants Meter inspection in his presence');
+  else if(rec.docConsumerInspStatus==='without_presence') parts.push('Consumer willing without presence as per OGRA form');
+  else parts.push('Nothing mentioned whether consumer wants inspection in his presence or not');
+
+  return parts.join(' ');
+}
+
 /* Downscales + compresses a captured photo before upload, to keep field uploads fast on weak connections.
    Returns base64 (no data: prefix) via Promise, or null if no image was given. */
 function compressImageForUpload(dataUrl, maxW, quality){
@@ -2181,6 +2294,8 @@ function saveRecord(){
     photoOgraDataList: [...ograPhotos], photoMrcDataList: [...mrcPhotos],
     photoReadingUrls: [], photoConditionUrls: [], photoOgraUrls: [], photoMrcUrls: [],
   };
+  rec.printPhysicalRemarks = buildPrintPhysicalRemarks(rec);
+  rec.printDocumentsRemarks = buildPrintDocumentsRemarks(rec);
   p.records.push(rec);
   renderProjectList();
   renderRecentMini();
@@ -2202,7 +2317,9 @@ function syncToSheet(p, rec, photos){
   const payload = { sheetId:p.sheetId, sr:rec.sr, meterNo:rec.meterNo, meterType:rec.meterType, reading:rec.reading,
     physicalCondition:rec.physicalCondition, documentsStatus:rec.documentsStatus,
     dispatcherMatch:rec.dispatcherMatch, project:p.name, device:p.device, remarks:rec.remarks,
-    mrvNo: p.mrvNo||'', projectDate: p.createdDateShort||'' };
+    mrvNo: p.mrvNo||'', projectDate: p.createdDateShort||'',
+    printPhysicalRemarks: rec.printPhysicalRemarks || buildPrintPhysicalRemarks(rec),
+    printDocumentsRemarks: rec.printDocumentsRemarks || buildPrintDocumentsRemarks(rec) };
   if(photos){
     if(photos.reading && photos.reading.length) payload.photoReading = photos.reading;
     if(photos.condition && photos.condition.length) payload.photoCondition = photos.condition;
