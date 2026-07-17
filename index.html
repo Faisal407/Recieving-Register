@@ -571,8 +571,19 @@ function output(result, callback) {
       Sheet's <code>DMIS Receiving</code> row 1 — <code>MR/MRV No.</code>, <code>Reading Photo URLs</code>,
       <code>Condition Photo URLs</code>, <code>OGRA Photo URLs</code>, <code>MRC Photo URLs</code> — new Sheets
       get this automatically.
+      <b>To grant Drive access:</b> in the function dropdown next to ▶ Run, select
+      <code>authorizeDriveAccess</code> — not <code>doPost</code>, since doPost exits before touching Drive when
+      run manually and will never trigger the permission prompt — then click Run and approve the popup.
     </div>
-    <textarea readonly rows="58" class="mono" style="font-size:11px; white-space:pre;" id="appsScriptCodeBox">function doPost(e) {
+    <textarea readonly rows="63" class="mono" style="font-size:11px; white-space:pre;" id="appsScriptCodeBox">function authorizeDriveAccess() {
+  // Run THIS specific function once manually (select it in the dropdown next to ▶ Run) to trigger
+  // the Drive permission prompt. doPost can't trigger it, since it exits immediately before ever
+  // touching Drive when run manually with no real request data.
+  var folder = DriveApp.getFoldersByName('Meter Receiving Photos');
+  Logger.log('Drive access OK — "Meter Receiving Photos" folder exists: ' + folder.hasNext());
+}
+
+function doPost(e) {
   if (!e || !e.postData) {
     // Happens if you click "Run" manually in the editor instead of a real request — harmless, ignore.
     return ContentService.createTextOutput(JSON.stringify({status:'error', message:'No request data — this function is meant to be called via the deployed Web App URL, not Run manually.'}))
