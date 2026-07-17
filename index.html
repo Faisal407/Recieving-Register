@@ -650,6 +650,12 @@ function doGet(e) {
 <div class="modal-backdrop" id="newProjectModal">
   <div class="modal-box">
     <h3>New Project</h3>
+    <div class="banner" id="npRegistryWarning" style="display:none; margin-bottom:12px;">
+      ⚠ <b>Your Auto-Restore registry isn't loaded in this tab right now.</b> This project will be created
+      normally, but it <b>won't come back automatically</b> if you refresh or reopen the app — unless you go to
+      <b>Settings</b> and re-save your Registry Sheet ID + Script URL first, or use the
+      <b>📋 Register in Auto-Restore List</b> button on this project's card afterward.
+    </div>
     <label class="field-label">Project Name</label>
     <input type="text" id="npName" placeholder="e.g. DMIS Receiving — Batch 14">
     <label class="field-label">Device Name</label>
@@ -785,7 +791,11 @@ function refreshInspectVisibility(){
 /* ============================================================
    PROJECTS
    ============================================================ */
-function openNewProjectModal(){ document.getElementById('newProjectModal').classList.add('open'); }
+function openNewProjectModal(){
+  document.getElementById('newProjectModal').classList.add('open');
+  const warn = document.getElementById('npRegistryWarning');
+  if(warn) warn.style.display = registrySheetId ? 'none' : 'block';
+}
 function closeNewProjectModal(){
   document.getElementById('newProjectModal').classList.remove('open');
   ['npName','npDevice','npMrvNo','npSheetId','npScriptUrl'].forEach(id=>document.getElementById(id).value='');
@@ -797,6 +807,9 @@ function createProject(){
   const sheetId = document.getElementById('npSheetId').value.trim();
   const appsScriptUrl = document.getElementById('npScriptUrl').value.trim();
   if(!name || !device){ alert('Please enter both Project Name and Device Name.'); return; }
+  if(!registrySheetId && sheetId && appsScriptUrl){
+    if(!confirm('Your Auto-Restore registry isn\'t loaded in this tab, so this project won\'t survive a refresh yet.\n\nCreate it anyway? (You can register it afterward from its card, or set up the registry in Settings first.)')) return;
+  }
   const proj = {
     id: 'p_' + Date.now() + Math.floor(Math.random()*1000),
     name, device, mrvNo, sheetId, appsScriptUrl,
