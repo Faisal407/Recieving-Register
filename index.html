@@ -430,7 +430,7 @@
       <b>6.</b> Paste that URL and your Registry Sheet ID below, along with your entries script URL (same one
       used on project cards), then tap <b>Save &amp; Generate My Link</b> and bookmark it.
     </p>
-    <textarea readonly rows="30" class="mono" style="font-size:11px; white-space:pre;" id="registryScriptCodeBox">// ===== DMIS Registry Script — ONLY handles the Auto-Restore project list. =====
+    <textarea readonly rows="34" class="mono" style="font-size:11px; white-space:pre;" id="registryScriptCodeBox">// ===== DMIS Registry Script — ONLY handles the Auto-Restore project list. =====
 // Separate on purpose from the entries script, so redeploying one never breaks the other.
 // The Registry Sheet ID is passed in with each request (not fixed in this code), so you
 // can point this at a different registry Sheet anytime just by changing it in the app.
@@ -440,6 +440,8 @@ function doPost(e) {
     return output({status:'error', message:'No request data.'});
   }
   var data = JSON.parse(e.postData.contents);
+  Logger.log('doPost received: sheetId=[%s] name=[%s] projectSheetId=[%s] mrvNo=[%s]',
+    data.sheetId, data.name, data.projectSheetId, data.mrvNo);
   return output(registerProject(data.sheetId, data.name, data.projectSheetId, data.createdAt, data.mrvNo));
 }
 
@@ -448,6 +450,8 @@ function doGet(e) {
   var callback = e.parameter.callback;
   var result;
   if (action === 'registerProject') {
+    Logger.log('doGet registerProject received: sheetId=[%s] name=[%s] projectSheetId=[%s] mrvNo=[%s]',
+      e.parameter.sheetId, e.parameter.name, e.parameter.projectSheetId, e.parameter.mrvNo);
     result = registerProject(e.parameter.sheetId, e.parameter.name, e.parameter.projectSheetId, null, e.parameter.mrvNo);
   } else {
     result = { projects: listProjects(e.parameter.sheetId) };
@@ -470,22 +474,56 @@ function listProjects(registrySheetId) {
 }
 
 function registerProject(registrySheetId, name, projectSheetId, createdAt, mrvNo) {
-  if (!registrySheetId || !projectSheetId) return { status: 'error', message: 'Missing sheetId or projectSheetId' };
-  var ss = SpreadsheetApp.openById(registrySheetId);
-  var psheet = ss.getSheetByName('Projects');
-  if (!psheet) {
-    psheet = ss.insertSheet('Projects');
-    psheet.appendRow(['Name', 'Sheet ID', 'Created At', 'MRV No']);
+  if (!registrySheetId || !projectSheetId) {
+    Logger.log('registerProject REJECTED — missing field. sheetId=[%s] projectSheetId=[%s]', registrySheetId, projectSheetId);
+    return { status: 'error', message: 'Missing sheetId or projectSheetId. Received sheetId=[' + registrySheetId + '] projectSheetId=[' + projectSheetId + ']' };
   }
-  var pvals = psheet.getDataRange().getValues();
-  var exists = false;
-  for (var pi = 1; pi < pvals.length; pi++) {
-    if (pvals[pi][1] === projectSheetId) { exists = true; break; }
+
+  // Two requests arriving at nearly the same moment can both read the sheet as "not yet containing
+  // this project" before either finishes writing — this lock makes writes wait their turn instead
+  // of racing, which was causing duplicate rows and, worse, silently-lost registrations.
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(15000);
+  } catch (lockErr) {
+    Logger.log('registerProject could not get lock — another write was in progress too long: %s', lockErr.message);
+    return { status: 'error', message: 'Server busy — please try again in a few seconds.' };
   }
-  if (!exists) {
-    psheet.appendRow([name || '', projectSheetId, createdAt || new Date().toISOString(), mrvNo || '']);
+
+  try {
+    var ss;
+    try {
+      ss = SpreadsheetApp.openById(registrySheetId);
+    } catch (err) {
+      Logger.log('registerProject COULD NOT OPEN sheet [%s]: %s', registrySheetId, err.message);
+      return { status: 'error', message: 'Could not open registry sheet [' + registrySheetId + ']: ' + err.message };
+    }
+    Logger.log('registerProject opened sheet: %s', ss.getName());
+    var psheet = ss.getSheetByName('Projects');
+    if (!psheet) {
+      psheet = ss.insertSheet('Projects');
+      psheet.appendRow(['Name', 'Sheet ID', 'Created At', 'MRV No']);
+    }
+    var pvals = psheet.getDataRange().getValues();
+    var existingRow = -1;
+    for (var pi = 1; pi < pvals.length; pi++) {
+      if (pvals[pi][1] === projectSheetId) { existingRow = pi; break; }
+    }
+    if (existingRow === -1) {
+      psheet.appendRow([name || '', projectSheetId, createdAt || new Date().toISOString(), mrvNo || '']);
+      SpreadsheetApp.flush();
+      Logger.log('registerProject APPENDED row for projectSheetId=[%s]', projectSheetId);
+    } else {
+      // Row already exists — refresh Name/MRV No in place so later edits aren't lost, instead of a no-op.
+      psheet.getRange(existingRow + 1, 1).setValue(name || '');
+      psheet.getRange(existingRow + 1, 4).setValue(mrvNo || '');
+      SpreadsheetApp.flush();
+      Logger.log('registerProject UPDATED existing row %s for projectSheetId=[%s]', existingRow + 1, projectSheetId);
+    }
+    return { status: 'ok', alreadyExisted: existingRow !== -1, projectSheetId: projectSheetId };
+  } finally {
+    lock.releaseLock();
   }
-  return { status: 'ok', alreadyExisted: exists, projectSheetId: projectSheetId };
 }
 
 function output(result, callback) {
@@ -896,14 +934,12 @@ function saveProjectDeviceName(id){
   if(activeProjectId===id){
     document.getElementById('projTag').textContent = `${p.name} · ${p.device}${p.appsScriptUrl ? ' · Cloud Sync ON' : ''}`;
   }
-  if(registryScriptUrl && p.sheetId && p.appsScriptUrl) registerProjectInRegistry(p);
 }
 function saveProjectMeta(id){
   const p = projects.find(x=>x.id===id);
   p.mrvNo = document.getElementById('pcMrvNo-'+id).value.trim();
   if(!p.createdDateShort) p.createdDateShort = new Date().toISOString().slice(0,10);
   renderProjectList();
-  if(registryScriptUrl && p.sheetId && p.appsScriptUrl) registerProjectInRegistry(p);
 }
 function testProjectCloudSync(id){
   const p = projects.find(x=>x.id===id);
