@@ -1084,7 +1084,7 @@ function jsonpRequest(url, params){
     script.src = url + (url.includes('?') ? '&' : '?') + qs;
     script.onerror = ()=>{ cleanup(); reject(new Error('JSONP request failed')); };
     document.body.appendChild(script);
-    timeoutId = setTimeout(()=>{ cleanup(); reject(new Error('JSONP timeout')); }, 15000);
+    timeoutId = setTimeout(()=>{ cleanup(); reject(new Error('JSONP timeout')); }, 25000);
   });
 }
 
@@ -1207,11 +1207,11 @@ function restoreProjectsFromRegistry(regScriptUrl, regSheetId, entriesUrl, attem
       ? `✓ Restored ${restored} project(s) automatically. ${entriesDefaultScriptUrl ? 'Records are loading in the background.' : '⚠ No entries script URL was saved with your link — open each project\'s card and paste its Apps Script URL to resume syncing.'} Check each project's Device name on its card too.`
       : 'Projects already loaded — nothing new to restore.');
   }).catch(err=>{
-    if(attempt < 3){
-      showRestoreStatus(`Connection hiccup — retrying automatically… (${attempt}/3)`);
-      setTimeout(()=>restoreProjectsFromRegistry(regScriptUrl, regSheetId, entriesUrl, attempt+1), 1800);
+    if(attempt < 5){
+      showRestoreStatus(`Connection hiccup — retrying automatically… (${attempt}/5)`);
+      setTimeout(()=>restoreProjectsFromRegistry(regScriptUrl, regSheetId, entriesUrl, attempt+1), 3000);
     } else {
-      showRestoreStatus('⚠ Could not auto-restore after 3 tries — check your internet connection, then retry.', true);
+      showRestoreStatus('⚠ Could not auto-restore after 5 tries — check your internet connection, then retry.', true);
       console.warn('Could not auto-restore projects from registry.', err);
     }
   });
