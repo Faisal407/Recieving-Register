@@ -795,6 +795,7 @@ function doGet(e) {
     <div style="display:flex; justify-content:center; margin:14px 0;">
       <canvas id="shareQrCanvas" style="max-width:100%; border-radius:10px;"></canvas>
     </div>
+    <div class="ocr-status" id="shareQrStatus"></div>
     <label class="field-label">Share Code (text fallback)</label>
     <div class="code-box"><span class="code" id="shareCodeText" style="font-size:11px; word-break:break-all;"></span></div>
     <button class="btn amber" style="margin-top:8px;" onclick="copyShareCodeText()">📋 Copy Code Text</button>
@@ -1083,13 +1084,21 @@ function openShareModal(id){
   document.getElementById('shareCodeText').textContent = code;
   document.getElementById('shareProjectModal').classList.add('open');
   const canvas = document.getElementById('shareQrCanvas');
+  const statusEl = document.getElementById('shareQrStatus');
+  canvas.style.display = 'none';
+  statusEl.textContent = 'Generating QR code…';
   if(window.QRCode){
     QRCode.toCanvas(canvas, code, { width: 260, margin: 1 }, function(err){
-      if(err){ canvas.style.display = 'none'; }
-      else { canvas.style.display = 'block'; }
+      if(err){
+        canvas.style.display = 'none';
+        statusEl.textContent = '⚠ Could not draw the QR code (' + err.message + ') — use the text code below instead.';
+      } else {
+        canvas.style.display = 'block';
+        statusEl.textContent = '';
+      }
     });
   } else {
-    canvas.style.display = 'none';
+    statusEl.textContent = '⚠ QR code library did not load (check your internet connection, or you may be viewing an older cached version of this page — try a hard refresh). Use the text code below instead.';
   }
 }
 function closeShareModal(){ document.getElementById('shareProjectModal').classList.remove('open'); }
