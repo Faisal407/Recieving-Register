@@ -512,13 +512,11 @@ function registerProject(registrySheetId, name, projectSheetId, createdAt, mrvNo
     if (existingRow === -1) {
       psheet.appendRow([name || '', projectSheetId, createdAt || new Date().toISOString(), mrvNo || '']);
       SpreadsheetApp.flush();
-      Logger.log('registerProject APPENDED row for projectSheetId=[%s]', projectSheetId);
+      Logger.log('registerProject APPENDED new row for projectSheetId=[%s] name=[%s]', projectSheetId, name);
     } else {
-      // Row already exists — refresh Name/MRV No in place so later edits aren't lost, instead of a no-op.
-      psheet.getRange(existingRow + 1, 1).setValue(name || '');
-      psheet.getRange(existingRow + 1, 4).setValue(mrvNo || '');
-      SpreadsheetApp.flush();
-      Logger.log('registerProject UPDATED existing row %s for projectSheetId=[%s]', existingRow + 1, projectSheetId);
+      // Never overwrite an existing row — only ever add. Logged in full so a wrong match is obvious if it recurs.
+      Logger.log('registerProject SKIPPED (no changes made) — projectSheetId=[%s] matched existing row %s, which currently contains: %s',
+        projectSheetId, existingRow + 1, JSON.stringify(pvals[existingRow]));
     }
     return { status: 'ok', alreadyExisted: existingRow !== -1, projectSheetId: projectSheetId };
   } finally {
