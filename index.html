@@ -590,6 +590,22 @@ function doGet(e) {
       }
     }
     result = { projects: plist };
+  } else if (action === 'registerProject') {
+    var psheet2 = ss.getSheetByName('Projects');
+    if (!psheet2) {
+      psheet2 = ss.insertSheet('Projects');
+      psheet2.appendRow(['Name', 'Sheet ID', 'Created At', 'MRV No']);
+    }
+    var pvals2 = psheet2.getDataRange().getValues();
+    var exists2 = false;
+    for (var pj = 1; pj < pvals2.length; pj++) {
+      if (pvals2[pj][1] === e.parameter.projectSheetId) { exists2 = true; break; }
+    }
+    if (!exists2) {
+      psheet2.appendRow([e.parameter.name || '', e.parameter.projectSheetId || '',
+        new Date().toISOString(), e.parameter.mrvNo || '']);
+    }
+    result = { status: 'ok', alreadyExisted: exists2, projectSheetId: e.parameter.projectSheetId || '' };
   } else {
     var sheet = ss.getSheetByName('DMIS Receiving');
     var rows = [];
@@ -1068,16 +1084,24 @@ function manualRegisterProject(id){
     body: JSON.stringify({ action:'registerProject', sheetId:registrySheetId, name:p.name, projectSheetId:p.sheetId,
       createdAt:p.createdAt, mrvNo:p.mrvNo||'' })
   }).then(()=>{
-    // Writes can't be confirmed directly (no-cors) — so read the registry back to actually verify it landed.
     if(statusEl) statusEl.textContent = 'Sent — verifying…';
-    return jsonpRequest(p.appsScriptUrl, {action:'listProjects', sheetId:registrySheetId});
-  }).then(data=>{
+    verifyRegistration(p, statusEl, 1);
+  }).catch(()=>{
+    if(statusEl) statusEl.textContent = '⚠ Could not send — check the Apps Script URL and your connection.';
+  });
+}
+function verifyRegistration(p, statusEl, attempt){
+  jsonpRequest(p.appsScriptUrl, {action:'listProjects', sheetId:registrySheetId}).then(data=>{
     const found = ((data && data.projects) || []).some(item=>item.sheetId===p.sheetId);
     if(statusEl) statusEl.textContent = found
       ? '✓ Confirmed — this project is in your Auto-Restore list.'
-      : '⚠ Sent, but not showing up in the registry yet — check the Registry Sheet ID in Settings is correct.';
+      : '⚠ Sent, but not showing up yet — double-check the Registry Sheet ID in Settings, or check the Sheet\'s "Projects" tab directly.';
   }).catch(()=>{
-    if(statusEl) statusEl.textContent = '⚠ Could not reach the Apps Script — check the URL and your connection.';
+    if(attempt < 2){
+      setTimeout(()=>verifyRegistration(p, statusEl, attempt+1), 1500);
+    } else if(statusEl) {
+      statusEl.textContent = '✓ Sent to the registry — could not double-check automatically (this verification step had a connection hiccup, separate from the send itself). Please check the Sheet\'s "Projects" tab directly to confirm.';
+    }
   });
 }
 function restoreProjectsFromRegistry(regId, scriptUrl, attempt){
