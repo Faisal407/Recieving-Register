@@ -410,40 +410,116 @@
 <!-- ============ SETTINGS TAB ============ -->
 <div id="tabSettings" style="display:none;">
   <div class="card">
-    <h2>🔗 Auto-Restore Link (fixes projects disappearing)</h2>
+    <h2>🔗 Auto-Restore Link — dedicated registry script</h2>
     <div class="subtext">
-      This solves "I refresh and everything's gone." One <b>dedicated Google Sheet</b> keeps a small registry
-      of your projects (just their names + Sheet IDs). Set it up once, and every time you or a teammate opens
-      the app <b>via the special link this generates</b>, it automatically pulls the project list back in —
-      genuinely "just open it and it's there," no export/import needed.
+      This solves "I refresh and everything's gone." A <b>separate, dedicated Apps Script</b> — completely
+      independent from the one that saves meter entries — keeps a small registry of your projects (just their
+      names + Sheet IDs). Keeping it separate means redeploying your entries script for other changes can never
+      break this, and vice versa. Set it up once; opening the app via the special link this generates
+      automatically pulls your project list back in.
     </div>
     <p style="font-size:13.5px; line-height:1.55;">
-      <b>1.</b> Create one new, blank Google Sheet — just for this, don't use a project Sheet.<br>
-      <b>2.</b> Copy its ID (from the URL, same way as any other Sheet ID) into the field below.<br>
-      <b>3.</b> Paste the same Apps Script Web App URL you're already using for projects.<br>
-      <b>4.</b> Tap <b>Save &amp; Generate My Link</b>, then bookmark that link — or better, "Add to Home Screen"
-      on your phone — and always open the app from there from now on, on every device.
+      <b>1.</b> Create one new, blank Google Sheet — just for this registry, don't reuse a project Sheet
+      (you can switch to a different one later just by changing the Sheet ID below — nothing hardcoded).<br>
+      <b>2.</b> Copy its ID from that Sheet's own URL.<br>
+      <b>3.</b> Go to <code>script.google.com</code> → <b>New project</b> — this must be a
+      <b>different, separate</b> Apps Script project from your entries one.<br>
+      <b>4.</b> Paste the Registry Script code below exactly as-is — nothing to fill in inside the code itself.<br>
+      <b>5.</b> Deploy → New deployment → Web app → Execute as: Me → Access: Anyone → Deploy. Run
+      <code>doPost</code> once manually first if this is a fresh script, to grant Sheets access.<br>
+      <b>6.</b> Paste that URL and your Registry Sheet ID below, along with your entries script URL (same one
+      used on project cards), then tap <b>Save &amp; Generate My Link</b> and bookmark it.
     </p>
-    <label class="field-label">Registry Google Sheet ID</label>
-    <input type="text" id="registrySheetIdInput" placeholder="A separate, dedicated Sheet ID">
-    <label class="field-label">Apps Script Web App URL</label>
+    <textarea readonly rows="30" class="mono" style="font-size:11px; white-space:pre;" id="registryScriptCodeBox">// ===== DMIS Registry Script — ONLY handles the Auto-Restore project list. =====
+// Separate on purpose from the entries script, so redeploying one never breaks the other.
+// The Registry Sheet ID is passed in with each request (not fixed in this code), so you
+// can point this at a different registry Sheet anytime just by changing it in the app.
+
+function doPost(e) {
+  if (!e || !e.postData) {
+    return output({status:'error', message:'No request data.'});
+  }
+  var data = JSON.parse(e.postData.contents);
+  return output(registerProject(data.sheetId, data.name, data.projectSheetId, data.createdAt, data.mrvNo));
+}
+
+function doGet(e) {
+  var action = e.parameter.action || 'listProjects';
+  var callback = e.parameter.callback;
+  var result;
+  if (action === 'registerProject') {
+    result = registerProject(e.parameter.sheetId, e.parameter.name, e.parameter.projectSheetId, null, e.parameter.mrvNo);
+  } else {
+    result = { projects: listProjects(e.parameter.sheetId) };
+  }
+  return output(result, callback);
+}
+
+function listProjects(registrySheetId) {
+  if (!registrySheetId) return [];
+  var ss = SpreadsheetApp.openById(registrySheetId);
+  var psheet = ss.getSheetByName('Projects');
+  var plist = [];
+  if (psheet) {
+    var pvals = psheet.getDataRange().getValues();
+    for (var pi = 1; pi < pvals.length; pi++) {
+      if (pvals[pi][1]) plist.push({ name: pvals[pi][0], sheetId: pvals[pi][1], createdAt: pvals[pi][2], mrvNo: pvals[pi][3] || '' });
+    }
+  }
+  return plist;
+}
+
+function registerProject(registrySheetId, name, projectSheetId, createdAt, mrvNo) {
+  if (!registrySheetId || !projectSheetId) return { status: 'error', message: 'Missing sheetId or projectSheetId' };
+  var ss = SpreadsheetApp.openById(registrySheetId);
+  var psheet = ss.getSheetByName('Projects');
+  if (!psheet) {
+    psheet = ss.insertSheet('Projects');
+    psheet.appendRow(['Name', 'Sheet ID', 'Created At', 'MRV No']);
+  }
+  var pvals = psheet.getDataRange().getValues();
+  var exists = false;
+  for (var pi = 1; pi < pvals.length; pi++) {
+    if (pvals[pi][1] === projectSheetId) { exists = true; break; }
+  }
+  if (!exists) {
+    psheet.appendRow([name || '', projectSheetId, createdAt || new Date().toISOString(), mrvNo || '']);
+  }
+  return { status: 'ok', alreadyExisted: exists, projectSheetId: projectSheetId };
+}
+
+function output(result, callback) {
+  var json = JSON.stringify(result);
+  if (callback) {
+    return ContentService.createTextOutput(callback + '(' + json + ')').setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+  return ContentService.createTextOutput(json).setMimeType(ContentService.MimeType.JSON);
+}</textarea>
+    <button class="btn outline" onclick="copyRegistryScriptCode()">📋 Copy Registry Script Code</button>
+
+    <label class="field-label" style="margin-top:16px;">Registry Google Sheet ID</label>
+    <input type="text" id="registrySheetIdInput" placeholder="Paste the Sheet ID — copy directly, don't retype">
+    <label class="field-label">Registry Script Web App URL (the new, separate one)</label>
     <input type="text" id="registryScriptUrlInput" placeholder="https://script.google.com/macros/s/…/exec">
+    <label class="field-label">Entries Apps Script URL (same one already used on your project cards)</label>
+    <input type="text" id="entriesScriptUrlInput" placeholder="https://script.google.com/macros/s/…/exec">
     <button class="btn amber" onclick="saveRegistryAndGenerateLink()">Save &amp; Generate My Link</button>
     <div id="registryLinkBox" style="margin-top:10px;"></div>
     <div class="ocr-status" id="registryStatus"></div>
   </div>
 
   <div class="card">
-    <h2>☁ Cloud Sync — Apps Script Setup</h2>
+    <h2>☁ Cloud Sync — Meter Entries Apps Script</h2>
     <div class="subtext">
-      <b>You only do this once — total, not per project.</b> This one Web App handles every project's Sheet,
-      because the Sheet ID is sent along with each request instead of being fixed inside the script. So for
-      every new project: just create a new Google Sheet, copy its ID into the project card, and reuse this
-      same Web App URL — no new script, no redeploying.
+      <b>You only do this once — total, not per project.</b> This Web App handles every project's Sheet for
+      meter records, dispatcher lists, and photos — the Sheet ID is sent along with each request instead of
+      being fixed inside the script. This is a <b>separate script from the Auto-Restore registry above</b> —
+      keeping them apart means redeploying this one for a records/photo change can never break your saved
+      project list, and vice versa.
     </div>
     <p style="font-size:13.5px; line-height:1.55;">
-      <b>1.</b> Go to <code>script.google.com</code> → New project (this does <b>not</b> need to be opened
-      from inside a specific Sheet).<br>
+      <b>1.</b> Go to <code>script.google.com</code> → New project (a <b>different</b> project from the
+      registry one above).<br>
       <b>2.</b> Delete any starter code, paste the script below exactly as-is — nothing to fill in or replace.<br>
       <b>3.</b> Deploy → New deployment → Type: <b>Web app</b> → Execute as: <b>Me</b> → Who has access: <b>Anyone</b>.<br>
       <b>4.</b> Copy the URL (ends in <code>/exec</code>).<br>
@@ -452,19 +528,15 @@
     </p>
     <div class="banner info" style="margin-top:4px; margin-bottom:14px;">
       <b>One requirement:</b> every Sheet ID you use must belong to (or be shared with) the same Google account
-      that deployed this script. Photos now go into one master Drive folder called <code>Meter Receiving
-      Photos</code>, with a subfolder per project named <code>ProjectName - Date - MRV No - Device Name</code>
-      (Device Name doubles as the folder identifier — no separate "creator" field). Filenames include the
-      meter number and the device that took the photo.
+      that deployed this script. Photos go into one master Drive folder called <code>Meter Receiving
+      Photos</code>, with a subfolder per project named <code>ProjectName - Date - MRV No - Device Name</code>.
+      Filenames include the meter number and the device that took the photo.
       <b>If you already have sheets from before this version:</b> add these header cells to the end of that
       Sheet's <code>DMIS Receiving</code> row 1 — <code>MR/MRV No.</code>, <code>Reading Photo URLs</code>,
       <code>Condition Photo URLs</code>, <code>OGRA Photo URLs</code>, <code>MRC Photo URLs</code> — new Sheets
-      get this automatically. You'll also want to add an <code>MRV No</code> column to your registry Sheet's
-      <code>Projects</code> tab if you set one up before this version. Note: since the folder name now includes
-      Device Name, if more than one device works on the same project, each device's photos land in their own
-      subfolder rather than one shared folder — worth keeping in mind if that matters for your workflow.
+      get this automatically.
     </div>
-    <textarea readonly rows="66" class="mono" style="font-size:11px; white-space:pre;" id="appsScriptCodeBox">function doPost(e) {
+    <textarea readonly rows="58" class="mono" style="font-size:11px; white-space:pre;" id="appsScriptCodeBox">function doPost(e) {
   if (!e || !e.postData) {
     // Happens if you click "Run" manually in the editor instead of a real request — harmless, ignore.
     return ContentService.createTextOutput(JSON.stringify({status:'error', message:'No request data — this function is meant to be called via the deployed Web App URL, not Run manually.'}))
@@ -479,25 +551,6 @@
     sheet2.clearContents();
     sheet2.appendRow(['Meter No (Dispatcher List)']);
     data.meters.forEach(function(m){ sheet2.appendRow([m]); });
-    return ContentService.createTextOutput(JSON.stringify({status:'ok'}))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-
-  if (data.action === 'registerProject') {
-    var psheet = ss.getSheetByName('Projects');
-    if (!psheet) {
-      psheet = ss.insertSheet('Projects');
-      psheet.appendRow(['Name', 'Sheet ID', 'Created At', 'MRV No']);
-    }
-    var pvals = psheet.getDataRange().getValues();
-    var exists = false;
-    for (var pi = 1; pi < pvals.length; pi++) {
-      if (pvals[pi][1] === data.projectSheetId) { exists = true; break; }
-    }
-    if (!exists) {
-      psheet.appendRow([data.name, data.projectSheetId, data.createdAt || new Date().toISOString(),
-        data.mrvNo || '']);
-    }
     return ContentService.createTextOutput(JSON.stringify({status:'ok'}))
       .setMimeType(ContentService.MimeType.JSON);
   }
@@ -577,35 +630,6 @@ function doGet(e) {
       }
     }
     result = { meters: meters };
-  } else if (action === 'listProjects') {
-    var psheet = ss.getSheetByName('Projects');
-    var plist = [];
-    if (psheet) {
-      var pvals = psheet.getDataRange().getValues();
-      for (var pi = 1; pi < pvals.length; pi++) {
-        if (pvals[pi][1]) plist.push({
-          name: pvals[pi][0], sheetId: pvals[pi][1], createdAt: pvals[pi][2],
-          mrvNo: pvals[pi][3] || ''
-        });
-      }
-    }
-    result = { projects: plist };
-  } else if (action === 'registerProject') {
-    var psheet2 = ss.getSheetByName('Projects');
-    if (!psheet2) {
-      psheet2 = ss.insertSheet('Projects');
-      psheet2.appendRow(['Name', 'Sheet ID', 'Created At', 'MRV No']);
-    }
-    var pvals2 = psheet2.getDataRange().getValues();
-    var exists2 = false;
-    for (var pj = 1; pj < pvals2.length; pj++) {
-      if (pvals2[pj][1] === e.parameter.projectSheetId) { exists2 = true; break; }
-    }
-    if (!exists2) {
-      psheet2.appendRow([e.parameter.name || '', e.parameter.projectSheetId || '',
-        new Date().toISOString(), e.parameter.mrvNo || '']);
-    }
-    result = { status: 'ok', alreadyExisted: exists2, projectSheetId: e.parameter.projectSheetId || '' };
   } else {
     var sheet = ss.getSheetByName('DMIS Receiving');
     var rows = [];
@@ -761,10 +785,10 @@ const METER_TYPES = [
    ============================================================ */
 let projects = [];        // {id,name,device,sheetId,appsScriptUrl,records:[],dispatcherSet:Set,srCounter:1,createdAt}
 let activeProjectId = null;
-let registrySheetId = '';
-let registryScriptUrl = '';
+let registryScriptUrl = '';       // dedicated registry script's Web App URL
+let registrySheetId = '';         // which registry Sheet that script should read/write — user's choice, changeable anytime
+let entriesDefaultScriptUrl = ''; // remembered so restored projects know which entries script to use
 function getActiveProject(){ return projects.find(p=>p.id===activeProjectId) || null; }
-
 let currentCameraMode = null;
 let cameraStream = null;
 let readingPhotos = [];
@@ -796,7 +820,7 @@ function showTab(name){
 }
 function updateRegistryReminder(){
   const el = document.getElementById('registryReminderBanner');
-  if(el) el.style.display = registrySheetId ? 'none' : 'block';
+  if(el) el.style.display = (registryScriptUrl && registrySheetId) ? 'none' : 'block';
 }
 function refreshInspectVisibility(){
   const has = !!getActiveProject();
@@ -810,7 +834,9 @@ function refreshInspectVisibility(){
 function openNewProjectModal(){
   document.getElementById('newProjectModal').classList.add('open');
   const warn = document.getElementById('npRegistryWarning');
-  if(warn) warn.style.display = registrySheetId ? 'none' : 'block';
+  if(warn) warn.style.display = (registryScriptUrl && registrySheetId) ? 'none' : 'block';
+  const surlEl = document.getElementById('npScriptUrl');
+  if(surlEl && !surlEl.value && entriesDefaultScriptUrl) surlEl.value = entriesDefaultScriptUrl;
 }
 function closeNewProjectModal(){
   document.getElementById('newProjectModal').classList.remove('open');
@@ -823,7 +849,7 @@ function createProject(){
   const sheetId = document.getElementById('npSheetId').value.trim();
   const appsScriptUrl = document.getElementById('npScriptUrl').value.trim();
   if(!name || !device){ alert('Please enter both Project Name and Device Name.'); return; }
-  if(!registrySheetId && sheetId && appsScriptUrl){
+  if(!(registryScriptUrl && registrySheetId) && sheetId && appsScriptUrl){
     if(!confirm('Your Auto-Restore registry isn\'t loaded in this tab, so this project won\'t survive a refresh yet.\n\nCreate it anyway? (You can register it afterward from its card, or set up the registry in Settings first.)')) return;
   }
   const proj = {
@@ -836,7 +862,8 @@ function createProject(){
   projects.push(proj);
   closeNewProjectModal();
   renderProjectList();
-  if(registrySheetId && proj.sheetId && proj.appsScriptUrl) registerProjectInRegistry(proj);
+  if(proj.appsScriptUrl) entriesDefaultScriptUrl = proj.appsScriptUrl;
+  if(registryScriptUrl && proj.sheetId && proj.appsScriptUrl) registerProjectInRegistry(proj);
 }
 function openProject(id){
   activeProjectId = id;
@@ -858,7 +885,8 @@ function saveProjectCloudSettings(id){
   if(activeProjectId===id){
     document.getElementById('projTag').textContent = `${p.name} · ${p.device}${p.appsScriptUrl ? ' · Cloud Sync ON' : ''}`;
   }
-  if(registrySheetId && p.sheetId && p.appsScriptUrl) registerProjectInRegistry(p);
+  if(p.appsScriptUrl) entriesDefaultScriptUrl = p.appsScriptUrl;
+  if(registryScriptUrl && p.sheetId && p.appsScriptUrl) registerProjectInRegistry(p);
 }
 function saveProjectDeviceName(id){
   const p = projects.find(x=>x.id===id);
@@ -868,14 +896,14 @@ function saveProjectDeviceName(id){
   if(activeProjectId===id){
     document.getElementById('projTag').textContent = `${p.name} · ${p.device}${p.appsScriptUrl ? ' · Cloud Sync ON' : ''}`;
   }
-  if(registrySheetId && p.sheetId && p.appsScriptUrl) registerProjectInRegistry(p);
+  if(registryScriptUrl && p.sheetId && p.appsScriptUrl) registerProjectInRegistry(p);
 }
 function saveProjectMeta(id){
   const p = projects.find(x=>x.id===id);
   p.mrvNo = document.getElementById('pcMrvNo-'+id).value.trim();
   if(!p.createdDateShort) p.createdDateShort = new Date().toISOString().slice(0,10);
   renderProjectList();
-  if(registrySheetId && p.sheetId && p.appsScriptUrl) registerProjectInRegistry(p);
+  if(registryScriptUrl && p.sheetId && p.appsScriptUrl) registerProjectInRegistry(p);
 }
 function testProjectCloudSync(id){
   const p = projects.find(x=>x.id===id);
@@ -1032,11 +1060,12 @@ function jsonpRequest(url, params){
    URL carrying ?registry=&script= auto-pulls that list back in.
    ============================================================ */
 function saveRegistryAndGenerateLink(){
-  const sid = document.getElementById('registrySheetIdInput').value.trim();
-  const surl = document.getElementById('registryScriptUrlInput').value.trim();
-  if(!sid || !surl){ alert('Enter both the Registry Sheet ID and the Apps Script Web App URL.'); return; }
-  registrySheetId = sid; registryScriptUrl = surl;
-  const link = `${location.origin}${location.pathname}?registry=${encodeURIComponent(sid)}&script=${encodeURIComponent(surl)}`;
+  const rsid = document.getElementById('registrySheetIdInput').value.trim();
+  const rsurl = document.getElementById('registryScriptUrlInput').value.trim();
+  const esurl = document.getElementById('entriesScriptUrlInput').value.trim();
+  if(!rsid || !rsurl){ alert('Enter both the Registry Google Sheet ID and the Registry Script Web App URL.'); return; }
+  registrySheetId = rsid; registryScriptUrl = rsurl; entriesDefaultScriptUrl = esurl;
+  const link = `${location.origin}${location.pathname}?registryScript=${encodeURIComponent(rsurl)}&registrySheetId=${encodeURIComponent(rsid)}${esurl ? '&entriesScript='+encodeURIComponent(esurl) : ''}`;
   document.getElementById('registryLinkBox').innerHTML = `
     <div class="code-box">
       <span class="code" style="font-size:11.5px; word-break:break-all;">${link}</span>
@@ -1060,8 +1089,8 @@ function copyRegistryLink(){
   }).catch(()=>{ prompt('Copy this link manually:', link); });
 }
 function registerProjectInRegistry(p){
-  if(!registrySheetId || !p.appsScriptUrl || !p.sheetId) return;
-  fetch(p.appsScriptUrl, {
+  if(!registryScriptUrl || !registrySheetId || !p.sheetId) return;
+  fetch(registryScriptUrl, {
     method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'},
     body: JSON.stringify({ action:'registerProject', sheetId:registrySheetId, name:p.name, projectSheetId:p.sheetId,
       createdAt:p.createdAt, mrvNo:p.mrvNo||'' })
@@ -1070,16 +1099,16 @@ function registerProjectInRegistry(p){
 function manualRegisterProject(id){
   const p = projects.find(x=>x.id===id);
   const statusEl = document.getElementById('pcStatus-'+id);
-  if(!registrySheetId){
-    if(statusEl) statusEl.textContent = '⚠ No Auto-Restore registry configured yet — set it up in Settings first, then try again.';
+  if(!registryScriptUrl || !registrySheetId){
+    if(statusEl) statusEl.textContent = '⚠ No Auto-Restore registry configured yet — set the Registry Sheet ID and Script URL in Settings first, then try again.';
     return;
   }
-  if(!p.sheetId || !p.appsScriptUrl){
-    if(statusEl) statusEl.textContent = '⚠ This project needs its own Sheet ID and Apps Script URL saved first.';
+  if(!p.sheetId){
+    if(statusEl) statusEl.textContent = '⚠ This project needs its own Sheet ID saved first.';
     return;
   }
   if(statusEl) statusEl.textContent = 'Sending to registry…';
-  fetch(p.appsScriptUrl, {
+  fetch(registryScriptUrl, {
     method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'},
     body: JSON.stringify({ action:'registerProject', sheetId:registrySheetId, name:p.name, projectSheetId:p.sheetId,
       createdAt:p.createdAt, mrvNo:p.mrvNo||'' })
@@ -1087,11 +1116,11 @@ function manualRegisterProject(id){
     if(statusEl) statusEl.textContent = 'Sent — verifying…';
     verifyRegistration(p, statusEl, 1);
   }).catch(()=>{
-    if(statusEl) statusEl.textContent = '⚠ Could not send — check the Apps Script URL and your connection.';
+    if(statusEl) statusEl.textContent = '⚠ Could not send — check the Registry Script URL in Settings and your connection.';
   });
 }
 function verifyRegistration(p, statusEl, attempt){
-  jsonpRequest(p.appsScriptUrl, {action:'listProjects', sheetId:registrySheetId}).then(data=>{
+  jsonpRequest(registryScriptUrl, {action:'listProjects', sheetId:registrySheetId}).then(data=>{
     const found = ((data && data.projects) || []).some(item=>item.sheetId===p.sheetId);
     if(statusEl) statusEl.textContent = found
       ? '✓ Confirmed — this project is in your Auto-Restore list.'
@@ -1104,16 +1133,20 @@ function verifyRegistration(p, statusEl, attempt){
     }
   });
 }
-function restoreProjectsFromRegistry(regId, scriptUrl, attempt){
+function restoreProjectsFromRegistry(regScriptUrl, regSheetId, entriesUrl, attempt){
   attempt = attempt || 1;
-  registrySheetId = regId; registryScriptUrl = scriptUrl;
-  const sidEl = document.getElementById('registrySheetIdInput');
-  const surlEl = document.getElementById('registryScriptUrlInput');
-  if(sidEl) sidEl.value = regId;
-  if(surlEl) surlEl.value = scriptUrl;
+  registryScriptUrl = regScriptUrl;
+  if(regSheetId) registrySheetId = regSheetId;
+  if(entriesUrl) entriesDefaultScriptUrl = entriesUrl;
+  const rsidEl = document.getElementById('registrySheetIdInput');
+  const rsurlEl = document.getElementById('registryScriptUrlInput');
+  const esurlEl = document.getElementById('entriesScriptUrlInput');
+  if(rsidEl && regSheetId) rsidEl.value = regSheetId;
+  if(rsurlEl) rsurlEl.value = regScriptUrl;
+  if(esurlEl && entriesUrl) esurlEl.value = entriesUrl;
   showRestoreStatus(attempt>1 ? `Restoring your projects… (retry ${attempt-1})` : 'Restoring your projects…');
 
-  jsonpRequest(scriptUrl, {action:'listProjects', sheetId:regId}).then(data=>{
+  jsonpRequest(regScriptUrl, {action:'listProjects', sheetId:registrySheetId}).then(data=>{
     const list = (data && data.projects) || [];
     if(list.length === 0){ showRestoreStatus('No projects found yet in this registry.'); return; }
     let restored = 0;
@@ -1125,25 +1158,24 @@ function restoreProjectsFromRegistry(regId, scriptUrl, attempt){
         id: 'p_' + Date.now() + Math.floor(Math.random()*100000),
         name: item.name || 'Restored Project', device: 'This device',
         mrvNo: item.mrvNo||'',
-        sheetId: item.sheetId, appsScriptUrl: scriptUrl,
+        sheetId: item.sheetId, appsScriptUrl: entriesDefaultScriptUrl || '',
         records: [], dispatcherSet: new Set(), srCounter: 1,
         createdAt: item.createdAt || new Date().toLocaleString(),
         createdDateShort: (item.createdAt||'').slice(0,10) || new Date().toISOString().slice(0,10),
       };
       projects.push(proj);
       restored++;
-      pullRecordsFromSheet(proj.id);
-      pullDispatcherFromSheet(proj.id);
+      if(proj.appsScriptUrl){ pullRecordsFromSheet(proj.id); pullDispatcherFromSheet(proj.id); }
     });
     renderProjectList();
     updateRegistryReminder();
     showRestoreStatus(restored>0
-      ? `✓ Restored ${restored} project(s) automatically. Records are loading in the background — check each project's Device name on its card and update it if needed.`
+      ? `✓ Restored ${restored} project(s) automatically. ${entriesDefaultScriptUrl ? 'Records are loading in the background.' : '⚠ No entries script URL was saved with your link — open each project\'s card and paste its Apps Script URL to resume syncing.'} Check each project's Device name on its card too.`
       : 'Projects already loaded — nothing new to restore.');
   }).catch(err=>{
     if(attempt < 3){
       showRestoreStatus(`Connection hiccup — retrying automatically… (${attempt}/3)`);
-      setTimeout(()=>restoreProjectsFromRegistry(regId, scriptUrl, attempt+1), 1800);
+      setTimeout(()=>restoreProjectsFromRegistry(regScriptUrl, regSheetId, entriesUrl, attempt+1), 1800);
     } else {
       showRestoreStatus('⚠ Could not auto-restore after 3 tries — check your internet connection, then retry.', true);
       console.warn('Could not auto-restore projects from registry.', err);
@@ -1151,7 +1183,7 @@ function restoreProjectsFromRegistry(regId, scriptUrl, attempt){
   });
 }
 function manualRetryRestore(){
-  if(registrySheetId && registryScriptUrl) restoreProjectsFromRegistry(registrySheetId, registryScriptUrl, 1);
+  if(registryScriptUrl && registrySheetId) restoreProjectsFromRegistry(registryScriptUrl, registrySheetId, entriesDefaultScriptUrl, 1);
 }
 function showRestoreStatus(msg, showRetry){
   const el = document.getElementById('restoreStatusBanner');
@@ -2103,7 +2135,13 @@ function exportProjectExcel(id){
 function copyAppsScriptCode(){
   const box = document.getElementById('appsScriptCodeBox');
   box.select(); box.setSelectionRange(0, 999999);
-  try{ document.execCommand('copy'); alert('Apps Script code copied.'); }
+  try{ document.execCommand('copy'); alert('Entries Apps Script code copied.'); }
+  catch(e){ alert('Could not copy automatically — please select and copy manually.'); }
+}
+function copyRegistryScriptCode(){
+  const box = document.getElementById('registryScriptCodeBox');
+  box.select(); box.setSelectionRange(0, 999999);
+  try{ document.execCommand('copy'); alert('Registry Script code copied — paste it into a fresh Apps Script project, nothing inside it needs editing.'); }
   catch(e){ alert('Could not copy automatically — please select and copy manually.'); }
 }
 
@@ -2150,9 +2188,10 @@ function resetForm(keepProjectsUntouched){
 updateReadout();
 (function initFromUrl(){
   const params = new URLSearchParams(window.location.search);
-  const reg = params.get('registry');
-  const scr = params.get('script');
-  if(reg && scr){ restoreProjectsFromRegistry(reg, scr); }
+  const regScript = params.get('registryScript');
+  const regSheetId = params.get('registrySheetId');
+  const entriesScript = params.get('entriesScript');
+  if(regScript && regSheetId){ restoreProjectsFromRegistry(regScript, regSheetId, entriesScript); }
 })();
 showTab('projects');
 </script>
