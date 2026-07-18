@@ -1285,7 +1285,8 @@ document.getElementById('importSessionFile').addEventListener('change', function
 function encodeShareCode(p, isAdminTransfer){
   try{ return btoa(unescape(encodeURIComponent(JSON.stringify({
     n:p.name, s:p.sheetId||'', u:p.appsScriptUrl||'', m:p.mrvNo||'', d:p.createdDateShort||'',
-    r:p.restrictedAccess?1:0, a:isAdminTransfer?1:0
+    r:p.restrictedAccess?1:0, a:isAdminTransfer?1:0,
+    rs: p.restrictedAccess ? (registrySheetId||'') : '', ru: p.restrictedAccess ? (registryScriptUrl||'') : ''
   })))); }
   catch(e){ return ''; }
 }
@@ -1368,6 +1369,14 @@ function joinProjectFromCode(){
   if(!code || !device){ alert('Please paste the Share Code and enter your Device Name.'); return; }
   const decoded = decodeShareCode(code);
   if(!decoded){ alert('That Share Code could not be read — check it was pasted in full.'); return; }
+  if(decoded.r && decoded.rs && decoded.ru){
+    if(!registryScriptUrl) registryScriptUrl = decoded.ru;
+    if(!registrySheetId) registrySheetId = decoded.rs;
+    const rsidEl = document.getElementById('registrySheetIdInput');
+    const rsurlEl = document.getElementById('registryScriptUrlInput');
+    if(rsidEl && !rsidEl.value) rsidEl.value = registrySheetId;
+    if(rsurlEl && !rsurlEl.value) rsurlEl.value = registryScriptUrl;
+  }
   const proj = {
     id: 'p_' + Date.now() + Math.floor(Math.random()*1000),
     name: decoded.n || 'Joined Project', device, sheetId: decoded.s||'', appsScriptUrl: decoded.u||'',
