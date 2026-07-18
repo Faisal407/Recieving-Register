@@ -979,8 +979,8 @@ function doGet(e) {
 <!-- Share Project modal (QR code + text fallback) -->
 <div class="modal-backdrop" id="shareProjectModal">
   <div class="modal-box">
-    <h3>Share Project</h3>
-    <div class="subtext">Have the other device open <b>Join via Code</b> and scan this — or send the text code below (WhatsApp/SMS) if scanning isn't convenient.</div>
+    <h3 id="shareModalTitle">Share Project</h3>
+    <div class="subtext" id="shareModalSubtext">Have the other device open <b>Join via Code</b> and scan this — or send the text code below (WhatsApp/SMS) if scanning isn't convenient.</div>
     <div style="display:flex; justify-content:center; margin:14px 0;">
       <canvas id="shareQrCanvas" style="max-width:100%; border-radius:10px;"></canvas>
     </div>
@@ -1127,7 +1127,7 @@ function createProject(){
   }
   const proj = {
     id: 'p_' + Date.now() + Math.floor(Math.random()*1000),
-    name, device, mrvNo, sheetId, appsScriptUrl, restrictedAccess: false, accessPaused: false,
+    name, device, mrvNo, sheetId, appsScriptUrl, restrictedAccess: false, accessPaused: false, role: 'admin',
     records: [], dispatcherSet: new Set(), srCounter: 1,
     createdAt: new Date().toLocaleString(),
     createdDateShort: new Date().toISOString().slice(0,10),
@@ -1282,9 +1282,10 @@ document.getElementById('importSessionFile').addEventListener('change', function
    SHARE CODE — encodes name+sheetId+scriptUrl so another device
    can "join" the same Sheet without retyping both values by hand.
    ============================================================ */
-function encodeShareCode(p){
+function encodeShareCode(p, isAdminTransfer){
   try{ return btoa(unescape(encodeURIComponent(JSON.stringify({
-    n:p.name, s:p.sheetId||'', u:p.appsScriptUrl||'', m:p.mrvNo||'', d:p.createdDateShort||'', r:p.restrictedAccess?1:0
+    n:p.name, s:p.sheetId||'', u:p.appsScriptUrl||'', m:p.mrvNo||'', d:p.createdDateShort||'',
+    r:p.restrictedAccess?1:0, a:isAdminTransfer?1:0
   })))); }
   catch(e){ return ''; }
 }
@@ -1293,11 +1294,16 @@ function decodeShareCode(code){
   catch(e){ return null; }
 }
 let shareModalCode = '';
-function openShareModal(id){
+function openShareModal(id, isAdminTransfer){
   const p = projects.find(x=>x.id===id);
-  const code = encodeShareCode(p);
+  if(isAdminTransfer && !confirm(`This gives the scanning device FULL Admin control of "${p.name}" — Sheet ID, Script URL, the ability to share it further, and everything else you can do. Continue?`)) return;
+  const code = encodeShareCode(p, isAdminTransfer);
   if(!code){ alert('Could not generate a Share Code.'); return; }
   shareModalCode = code;
+  document.getElementById('shareModalTitle').textContent = isAdminTransfer ? '👑 Transfer Admin Rights' : 'Share Project (Field Work)';
+  document.getElementById('shareModalSubtext').textContent = isAdminTransfer
+    ? 'Scanning this makes the other device a full Admin of this project — only do this for someone who should have complete control.'
+    : 'Scanning this lets the other device join for field work only — it won\'t see the Sheet ID, Script URL, or be able to share the project further.';
   document.getElementById('shareCodeText').textContent = code;
   document.getElementById('shareProjectModal').classList.add('open');
   const canvas = document.getElementById('shareQrCanvas');
@@ -1365,7 +1371,7 @@ function joinProjectFromCode(){
   const proj = {
     id: 'p_' + Date.now() + Math.floor(Math.random()*1000),
     name: decoded.n || 'Joined Project', device, sheetId: decoded.s||'', appsScriptUrl: decoded.u||'',
-    mrvNo: decoded.m||'', restrictedAccess: !!decoded.r, accessPaused: false,
+    mrvNo: decoded.m||'', restrictedAccess: !!decoded.r, accessPaused: false, role: decoded.a ? 'admin' : 'field',
     records: [], dispatcherSet: new Set(), srCounter: 1,
     createdAt: new Date().toLocaleString(),
     createdDateShort: decoded.d || new Date().toISOString().slice(0,10),
@@ -1377,6 +1383,7 @@ function joinProjectFromCode(){
     if(registryScriptUrl && registrySheetId && proj.sheetId && proj.appsScriptUrl) registerProjectInRegistry(proj);
     closeJoinProjectModal();
     renderProjectList();
+    if(proj.role==='admin') alert(`Joined "${proj.name}" with full Admin rights.`);
     if(proj.appsScriptUrl){
       pullRecordsFromSheet(proj.id);
       pullDispatcherFromSheet(proj.id);
@@ -1596,7 +1603,7 @@ function restoreProjectsFromRegistry(regScriptUrl, regSheetId, entriesUrl, attem
       const proj = {
         id: 'p_' + Date.now() + Math.floor(Math.random()*100000),
         name: item.name || 'Restored Project', device: 'This device',
-        mrvNo: item.mrvNo||'', restrictedAccess: false, accessPaused: false,
+        mrvNo: item.mrvNo||'', restrictedAccess: false, accessPaused: false, role: 'admin',
         sheetId: item.sheetId, appsScriptUrl: entriesDefaultScriptUrl || '',
         records: [], dispatcherSet: new Set(), srCounter: 1,
         createdAt: item.createdAt || new Date().toLocaleString(),
@@ -1792,7 +1799,9 @@ function renderProjectList(){
   if(projects.length===0){ wrap.innerHTML = '<div class="subtext">No projects yet — create one above to get started.</div>'; return; }
   wrap.innerHTML = projects.map(p=>{
     const cloudOn = !!(p.appsScriptUrl && p.sheetId);
-    const recordsTableRows = p.records.map(r=>`
+    const isField = p.role === 'field';
+    const visibleRecords = isField ? p.records.filter(r=>r.device===p.device) : p.records;
+    const recordsTableRows = visibleRecords.map(r=>`
       <tr>
         <td>${r.sr}</td><td>${r.meterNo}</td><td>${r.meterType}</td><td>${r.reading}</td>
         <td>${r.physicalCondition}</td><td>${r.documentsStatus}</td><td>${r.cloudStatus||'-'}</td>
@@ -1802,19 +1811,17 @@ function renderProjectList(){
         </td>
       </tr>`).join('');
 
-    return `
-    <div class="project-card ${p.id===activeProjectId ? 'active' : ''}">
-      <div class="pc-head">
-        <div>
-          <div class="pc-name">${p.name}</div>
-          <div class="pc-meta">${p.device} · Created ${p.createdAt} · ${p.records.length} record(s)</div>
-          <span class="pc-badge ${cloudOn ? 'on' : 'off'}">${cloudOn ? '☁ Cloud Sync ON' : '☁ Cloud Sync not linked'}</span>
-          ${p.restrictedAccess ? '<span class="pc-badge on" style="background:#3d2f6b; color:#fff;">🔒 Restricted Access</span>' : ''}
-          ${p.accessPaused ? '<span class="pc-badge off" style="background:#7a5a10; color:#fff;">⏸ Paused (view only)</span>' : ''}
+    const cloudBlock = isField ? `
+      <div class="pc-cloud">
+        <label class="field-label">Device Name (shown on entries saved from here)</label>
+        <div class="row">
+          <input type="text" id="pcDevice-${p.id}" value="${p.device||''}" placeholder="e.g. Inspector-1 Phone">
+          <button class="btn outline small" style="flex:0 0 70px;" onclick="saveProjectDeviceName('${p.id}')">Save</button>
         </div>
-        <button class="pill-btn" onclick="openProject('${p.id}')">Open</button>
-      </div>
-
+        <button class="btn outline small" style="margin-top:8px;" onclick="pullRecordsFromSheet('${p.id}')">🔄 Sync from Sheet</button>
+        <div class="subtext" style="margin-top:6px;">Field device — you can view and export only the records you've saved from here. Sheet details and sharing are managed by this project's Admin.</div>
+        <div class="ocr-status" id="pcStatus-${p.id}"></div>
+      </div>` : `
       <div class="pc-cloud">
         <label class="field-label">Device Name (shown on entries saved from here)</label>
         <div class="row">
@@ -1835,9 +1842,10 @@ function renderProjectList(){
           <button class="btn amber small" onclick="saveProjectCloudSettings('${p.id}')">Save</button>
         </div>
         <div class="row" style="margin-top:8px;">
-          <button class="btn outline small" onclick="openShareModal('${p.id}')">🔗 Share Project (QR / Code)</button>
+          <button class="btn outline small" onclick="openShareModal('${p.id}', false)">🔗 Share (Field Work)</button>
           <button class="btn outline small" onclick="pullRecordsFromSheet('${p.id}')">🔄 Sync from Sheet</button>
         </div>
+        <button class="btn outline small" style="margin-top:8px;" onclick="openShareModal('${p.id}', true)">👑 Transfer Admin Rights</button>
         <button class="btn outline small" style="margin-top:8px;" onclick="manualRegisterProject('${p.id}')">📋 Register in Auto-Restore List</button>
 
         ${p.restrictedAccess ? `
@@ -1864,10 +1872,26 @@ function renderProjectList(){
           </label>
         </div>`}
         <div class="ocr-status" id="pcStatus-${p.id}"></div>
+      </div>`;
+
+    return `
+    <div class="project-card ${p.id===activeProjectId ? 'active' : ''}">
+      <div class="pc-head">
+        <div>
+          <div class="pc-name">${p.name}</div>
+          <div class="pc-meta">${p.device} · Created ${p.createdAt} · ${visibleRecords.length} record(s)${isField ? ' (yours)' : ''}</div>
+          <span class="pc-badge ${cloudOn ? 'on' : 'off'}">${cloudOn ? '☁ Cloud Sync ON' : '☁ Cloud Sync not linked'}</span>
+          <span class="pc-badge ${isField ? 'off' : 'on'}" style="${isField ? 'background:#3a3a3a;' : 'background:#155724;'} color:#fff;">${isField ? '👷 Field' : '👑 Admin'}</span>
+          ${p.restrictedAccess ? '<span class="pc-badge on" style="background:#3d2f6b; color:#fff;">🔒 Restricted Access</span>' : ''}
+          ${p.accessPaused ? '<span class="pc-badge off" style="background:#7a5a10; color:#fff;">⏸ Paused (view only)</span>' : ''}
+        </div>
+        <button class="pill-btn" onclick="openProject('${p.id}')">Open</button>
       </div>
 
+      ${cloudBlock}
+
       <div class="pc-actions">
-        <button class="btn outline small" onclick="toggleProjectRecords('${p.id}')" style="flex:1;">View Records (${p.records.length})</button>
+        <button class="btn outline small" onclick="toggleProjectRecords('${p.id}')" style="flex:1;">View Records (${visibleRecords.length})</button>
         <button class="btn outline small" onclick="exportProjectExcel('${p.id}')" style="flex:1;">⬇ Export</button>
         <button class="btn outline small" style="flex:0 0 44px; color:var(--warn); border-color:var(--warn);" onclick="deleteProject('${p.id}')">🗑</button>
       </div>
@@ -2647,8 +2671,10 @@ function renderRecentMini(){
 
 function exportProjectExcel(id){
   const p = projects.find(x=>x.id===id);
-  if(!p || p.records.length===0){ alert('No records to export yet for this project.'); return; }
-  const rows = p.records.map(r=>({
+  if(!p) return;
+  const visibleRecords = p.role==='field' ? p.records.filter(r=>r.device===p.device) : p.records;
+  if(visibleRecords.length===0){ alert('No records to export yet for this project.'); return; }
+  const rows = visibleRecords.map(r=>({
     'Sr. No.': r.sr, 'Meter No.': r.meterNo, 'Meter Type': r.meterType, 'Meter Reading': r.reading,
     'Physically Condition of Meters': r.physicalCondition, 'Documents Status': r.documentsStatus,
     'Dispatcher Match': r.dispatcherMatch, 'Project': p.name, 'Device': p.device, 'MR/MRV No.': p.mrvNo||'',
