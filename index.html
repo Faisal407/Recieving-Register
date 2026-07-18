@@ -205,6 +205,11 @@
 
   <div id="inspectContent" style="display:none;">
 
+  <div id="pausedBanner" class="banner" style="display:none; background:#fbe6d6; border-color:var(--amber);">
+    ⏸ <b>This project is paused for this device.</b> You can view its records and history, but Save Entry is
+    disabled until the project owner sets it back to Allowed.
+  </div>
+
   <div class="card">
     <h2><span class="num">0</span> Dispatcher List (optional)</h2>
     <div class="subtext">Upload the dispatcher's Excel/CSV of expected meter numbers for <b id="dispatcherProjName">this project</b>.
@@ -396,7 +401,7 @@
 
   <div class="row" style="margin-bottom:20px;">
     <button class="btn outline" onclick="resetForm(true)" style="flex:0 0 110px;">Clear</button>
-    <button class="btn amber" onclick="saveRecord()">💾 Save Entry</button>
+    <button class="btn amber" id="saveEntryBtn" onclick="saveRecord()">💾 Save Entry</button>
   </div>
 
   </div>
@@ -435,7 +440,14 @@
       <b>6.</b> Paste that URL and your Registry Sheet ID below, along with your entries script URL (same one
       used on project cards), then tap <b>Save &amp; Generate My Link</b> and bookmark it.
     </p>
-    <textarea readonly rows="34" class="mono" style="font-size:11px; white-space:pre;" id="registryScriptCodeBox">// ===== DMIS Registry Script — ONLY handles the Auto-Restore project list. =====
+    <div class="banner info" style="margin-top:4px; margin-bottom:14px;">
+      <b>New: Restricted Access (opt-in per project).</b> Turn it on for a project and its card gets a "Grant
+      Access" form — pick a device, set a duration, and only that device can join it, for that long. Manage it
+      by editing the <code>Access - [Project Name]</code> tab this creates inside your Registry Sheet — the
+      Status dropdown (Allowed / Restricted / Paused) takes effect the next time that device opens the app or
+      reopens the project. Projects that never opt in keep working exactly as before, no change.
+    </div>
+    <textarea readonly rows="52" class="mono" style="font-size:11px; white-space:pre;" id="registryScriptCodeBox">// ===== DMIS Registry Script — project list + optional per-device access control. =====
 // Separate on purpose from the entries script, so redeploying one never breaks the other.
 // The Registry Sheet ID is passed in with each request (not fixed in this code), so you
 // can point this at a different registry Sheet anytime just by changing it in the app.
@@ -445,8 +457,12 @@ function doPost(e) {
     return output({status:'error', message:'No request data.'});
   }
   var data = JSON.parse(e.postData.contents);
-  Logger.log('doPost received: sheetId=[%s] name=[%s] projectSheetId=[%s] mrvNo=[%s]',
-    data.sheetId, data.name, data.projectSheetId, data.mrvNo);
+  if (data.action === 'setupRestrictedProject') {
+    return output(setupRestrictedProject(data.sheetId, data.projectSheetId, data.projectName));
+  }
+  if (data.action === 'grantAccess') {
+    return output(grantAccess(data.sheetId, data.projectSheetId, data.projectName, data.deviceName, data.durationHours));
+  }
   return output(registerProject(data.sheetId, data.name, data.projectSheetId, data.createdAt, data.mrvNo));
 }
 
@@ -455,9 +471,9 @@ function doGet(e) {
   var callback = e.parameter.callback;
   var result;
   if (action === 'registerProject') {
-    Logger.log('doGet registerProject received: sheetId=[%s] name=[%s] projectSheetId=[%s] mrvNo=[%s]',
-      e.parameter.sheetId, e.parameter.name, e.parameter.projectSheetId, e.parameter.mrvNo);
     result = registerProject(e.parameter.sheetId, e.parameter.name, e.parameter.projectSheetId, null, e.parameter.mrvNo);
+  } else if (action === 'checkAccess') {
+    result = checkAccess(e.parameter.sheetId, e.parameter.projectSheetId, e.parameter.projectName, e.parameter.deviceName);
   } else {
     result = { projects: listProjects(e.parameter.sheetId) };
   }
@@ -472,7 +488,10 @@ function listProjects(registrySheetId) {
   if (psheet) {
     var pvals = psheet.getDataRange().getValues();
     for (var pi = 1; pi < pvals.length; pi++) {
-      if (pvals[pi][1]) plist.push({ name: pvals[pi][0], sheetId: pvals[pi][1], createdAt: pvals[pi][2], mrvNo: pvals[pi][3] || '' });
+      if (pvals[pi][1]) plist.push({
+        name: pvals[pi][0], sheetId: pvals[pi][1], createdAt: pvals[pi][2], mrvNo: pvals[pi][3] || '',
+        restricted: pvals[pi][4] === true || pvals[pi][4] === 'TRUE'
+      });
     }
   }
   return plist;
@@ -480,34 +499,25 @@ function listProjects(registrySheetId) {
 
 function registerProject(registrySheetId, name, projectSheetId, createdAt, mrvNo) {
   if (!registrySheetId || !projectSheetId) {
-    Logger.log('registerProject REJECTED — missing field. sheetId=[%s] projectSheetId=[%s]', registrySheetId, projectSheetId);
     return { status: 'error', message: 'Missing sheetId or projectSheetId. Received sheetId=[' + registrySheetId + '] projectSheetId=[' + projectSheetId + ']' };
   }
-
-  // Two requests arriving at nearly the same moment can both read the sheet as "not yet containing
-  // this project" before either finishes writing — this lock makes writes wait their turn instead
-  // of racing, which was causing duplicate rows and, worse, silently-lost registrations.
   var lock = LockService.getScriptLock();
   try {
     lock.waitLock(15000);
   } catch (lockErr) {
-    Logger.log('registerProject could not get lock — another write was in progress too long: %s', lockErr.message);
     return { status: 'error', message: 'Server busy — please try again in a few seconds.' };
   }
-
   try {
     var ss;
     try {
       ss = SpreadsheetApp.openById(registrySheetId);
     } catch (err) {
-      Logger.log('registerProject COULD NOT OPEN sheet [%s]: %s', registrySheetId, err.message);
       return { status: 'error', message: 'Could not open registry sheet [' + registrySheetId + ']: ' + err.message };
     }
-    Logger.log('registerProject opened sheet: %s', ss.getName());
     var psheet = ss.getSheetByName('Projects');
     if (!psheet) {
       psheet = ss.insertSheet('Projects');
-      psheet.appendRow(['Name', 'Sheet ID', 'Created At', 'MRV No']);
+      psheet.appendRow(['Name', 'Sheet ID', 'Created At', 'MRV No', 'Restricted']);
     }
     var pvals = psheet.getDataRange().getValues();
     var existingRow = -1;
@@ -515,18 +525,104 @@ function registerProject(registrySheetId, name, projectSheetId, createdAt, mrvNo
       if (pvals[pi][1] === projectSheetId) { existingRow = pi; break; }
     }
     if (existingRow === -1) {
-      psheet.appendRow([name || '', projectSheetId, createdAt || new Date().toISOString(), mrvNo || '']);
+      psheet.appendRow([name || '', projectSheetId, createdAt || new Date().toISOString(), mrvNo || '', false]);
       SpreadsheetApp.flush();
-      Logger.log('registerProject APPENDED new row for projectSheetId=[%s] name=[%s]', projectSheetId, name);
-    } else {
-      // Never overwrite an existing row — only ever add. Logged in full so a wrong match is obvious if it recurs.
-      Logger.log('registerProject SKIPPED (no changes made) — projectSheetId=[%s] matched existing row %s, which currently contains: %s',
-        projectSheetId, existingRow + 1, JSON.stringify(pvals[existingRow]));
     }
     return { status: 'ok', alreadyExisted: existingRow !== -1, projectSheetId: projectSheetId };
   } finally {
     lock.releaseLock();
   }
+}
+
+// Access control tab is named after the project, so it's easy to find and edit by hand in Sheets.
+function accessTabName(projectName) {
+  var safe = String(projectName || 'Project').replace(/[\[\]\*\/\\\?:]/g, '-');
+  if (safe.length > 90) safe = safe.substring(0, 90);
+  return 'Access - ' + safe;
+}
+
+function setupRestrictedProject(registrySheetId, projectSheetId, projectName) {
+  if (!registrySheetId || !projectSheetId) return { status: 'error', message: 'Missing sheetId or projectSheetId' };
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(15000); } catch (e) { return { status: 'error', message: 'Server busy — try again.' }; }
+  try {
+    var ss = SpreadsheetApp.openById(registrySheetId);
+    var psheet = ss.getSheetByName('Projects');
+    if (psheet) {
+      var pvals = psheet.getDataRange().getValues();
+      for (var pi = 1; pi < pvals.length; pi++) {
+        if (pvals[pi][1] === projectSheetId) { psheet.getRange(pi + 1, 5).setValue(true); break; }
+      }
+    }
+    var tabName = accessTabName(projectName);
+    var accessSheet = ss.getSheetByName(tabName);
+    if (!accessSheet) {
+      accessSheet = ss.insertSheet(tabName);
+      accessSheet.appendRow(['Device Name', 'Granted At', 'Duration (Hours)', 'Expires At', 'Status']);
+      accessSheet.getRange(1, 1, 1, 5).setFontWeight('bold').setBackground('#eef1f3');
+      var rule = SpreadsheetApp.newDataValidation()
+        .requireValueInList(['Allowed', 'Restricted', 'Paused'], true).setAllowInvalid(false).build();
+      accessSheet.getRange(2, 5, 998, 1).setDataValidation(rule);
+      accessSheet.setColumnWidth(1, 170); accessSheet.setColumnWidth(2, 150);
+      accessSheet.setColumnWidth(4, 150); accessSheet.setColumnWidth(5, 110);
+    }
+    return { status: 'ok', tabName: tabName };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function grantAccess(registrySheetId, projectSheetId, projectName, deviceName, durationHours) {
+  if (!registrySheetId || !projectSheetId || !deviceName) {
+    return { status: 'error', message: 'Missing required field for grantAccess' };
+  }
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(15000); } catch (e) { return { status: 'error', message: 'Server busy — try again.' }; }
+  try {
+    var ss = SpreadsheetApp.openById(registrySheetId);
+    var tabName = accessTabName(projectName);
+    var accessSheet = ss.getSheetByName(tabName);
+    if (!accessSheet) {
+      setupRestrictedProject(registrySheetId, projectSheetId, projectName);
+      accessSheet = ss.getSheetByName(tabName);
+    }
+    var hours = parseFloat(durationHours) || 24;
+    var now = new Date();
+    var expires = new Date(now.getTime() + hours * 3600 * 1000);
+    var vals = accessSheet.getDataRange().getValues();
+    var rowIdx = -1;
+    for (var i = 1; i < vals.length; i++) {
+      if (String(vals[i][0]).trim().toLowerCase() === String(deviceName).trim().toLowerCase()) { rowIdx = i + 1; break; }
+    }
+    if (rowIdx === -1) {
+      accessSheet.appendRow([deviceName, now, hours, expires, 'Allowed']);
+    } else {
+      accessSheet.getRange(rowIdx, 2, 1, 4).setValues([[now, hours, expires, 'Allowed']]);
+    }
+    SpreadsheetApp.flush();
+    return { status: 'ok', expiresAt: expires.toISOString() };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function checkAccess(registrySheetId, projectSheetId, projectName, deviceName) {
+  if (!registrySheetId || !deviceName) return { found: false };
+  var ss = SpreadsheetApp.openById(registrySheetId);
+  var tabName = accessTabName(projectName);
+  var accessSheet = ss.getSheetByName(tabName);
+  if (!accessSheet) return { found: false };
+  var vals = accessSheet.getDataRange().getValues();
+  for (var i = 1; i < vals.length; i++) {
+    if (String(vals[i][0]).trim().toLowerCase() === String(deviceName).trim().toLowerCase()) {
+      var status = String(vals[i][4] || 'Allowed');
+      var expiresAt = vals[i][3];
+      var expired = false;
+      if (expiresAt) { expired = (new Date()) > new Date(expiresAt); }
+      return { found: true, status: status, expired: expired, expiresAt: expiresAt ? new Date(expiresAt).toISOString() : '' };
+    }
+  }
+  return { found: false };
 }
 
 function output(result, callback) {
@@ -705,7 +801,8 @@ function appendToPrintSheet(ss, data) {
     sheet.getRange(HEADER_ROW, 1, 1, 7).setValues([[
       'Sr. No.', 'Meter No.', 'Meter Type', 'Meter Reading',
       'Physically Condition of Meters', 'Documents Status', 'Remarks'
-    ]]).setFontWeight('bold').setBackground('#eef1f3');
+    ]]).setFontWeight('bold').setBackground('#eef1f3')
+      .setBorder(true, true, true, true, true, true, 'black', SpreadsheetApp.BorderStyle.SOLID);
     sheet.setColumnWidth(1, 60);
     sheet.setColumnWidth(2, 110);
     sheet.setColumnWidth(3, 110);
@@ -736,9 +833,9 @@ function appendToPrintSheet(ss, data) {
   sheet.getRange(newRow, 1, 1, 7).setValues([[
     data.sr, data.meterNo, data.meterType, data.reading,
     data.printPhysicalRemarks || '-', data.printDocumentsRemarks || '-', data.remarks || ''
-  ]]);
+  ]]).setBorder(true, true, true, true, true, true, 'black', SpreadsheetApp.BorderStyle.SOLID);
 
-  var sigRow = newRow + 3; // extra blank spacing above the signature block
+  var sigRow = newRow + 4; // extra blank spacing above the signature block (one more than before)
   sheet.getRange(sigRow, 1, 1, 2).merge().setValue(SIG_MARKER + ': ____________________');
   sheet.getRange(sigRow, 3, 1, 3).merge().setValue('Meter Dispatch Section Representative Sign: ____________________');
   sheet.getRange(sigRow, 6, 1, 2).merge().setValue('Technical Officer (Metering) Sign: ____________________');
@@ -842,6 +939,12 @@ function doGet(e) {
     <input type="text" id="npSheetId" placeholder="From this project's own Sheet URL, e.g. 1AbC...xyz">
     <label class="field-label">Apps Script Web App URL (optional — same URL reused for every project)</label>
     <input type="text" id="npScriptUrl" placeholder="https://script.google.com/macros/s/…/exec">
+    <div class="cond-row" style="margin-top:10px;">
+      <span class="cond-label">🔒 Restricted Access</span>
+      <label style="display:flex; align-items:center; gap:6px; font-size:13px;">
+        <input type="checkbox" id="npRestricted" style="width:auto;"> Only granted devices can join
+      </label>
+    </div>
     <div class="subtext" style="margin-top:8px;">
       One Apps Script deployment covers all your projects — see <b>Settings</b> for the one-time setup.
       Each project just needs its own Sheet ID here. MR/MRV No. and Device Name are used to name this
@@ -1006,6 +1109,7 @@ function openNewProjectModal(){
 function closeNewProjectModal(){
   document.getElementById('newProjectModal').classList.remove('open');
   ['npName','npDevice','npMrvNo','npSheetId','npScriptUrl'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('npRestricted').checked = false;
 }
 function createProject(){
   const name = document.getElementById('npName').value.trim();
@@ -1013,13 +1117,17 @@ function createProject(){
   const mrvNo = document.getElementById('npMrvNo').value.trim();
   const sheetId = document.getElementById('npSheetId').value.trim();
   const appsScriptUrl = document.getElementById('npScriptUrl').value.trim();
+  const restricted = document.getElementById('npRestricted').checked;
   if(!name || !device){ alert('Please enter both Project Name and Device Name.'); return; }
   if(!(registryScriptUrl && registrySheetId) && sheetId && appsScriptUrl){
     if(!confirm('Your Auto-Restore registry isn\'t loaded in this tab, so this project won\'t survive a refresh yet.\n\nCreate it anyway? (You can register it afterward from its card, or set up the registry in Settings first.)')) return;
   }
+  if(restricted && !(registryScriptUrl && registrySheetId)){
+    alert('Restricted Access needs your Auto-Restore registry set up first (Settings tab) — creating this project without it.');
+  }
   const proj = {
     id: 'p_' + Date.now() + Math.floor(Math.random()*1000),
-    name, device, mrvNo, sheetId, appsScriptUrl,
+    name, device, mrvNo, sheetId, appsScriptUrl, restrictedAccess: false, accessPaused: false,
     records: [], dispatcherSet: new Set(), srCounter: 1,
     createdAt: new Date().toLocaleString(),
     createdDateShort: new Date().toISOString().slice(0,10),
@@ -1029,17 +1137,40 @@ function createProject(){
   renderProjectList();
   if(proj.appsScriptUrl) entriesDefaultScriptUrl = proj.appsScriptUrl;
   if(registryScriptUrl && proj.sheetId && proj.appsScriptUrl) registerProjectInRegistry(proj);
+  if(restricted && registryScriptUrl && registrySheetId && proj.sheetId) enableRestrictedAccess(proj.id);
 }
 function openProject(id){
+  const p0 = projects.find(x=>x.id===id);
+  if(p0 && p0.restrictedAccess){
+    checkAccessForProject(p0).then(res=>{
+      if(!res.allowed){
+        projects = projects.filter(x=>x.id!==id);
+        renderProjectList();
+        alert(`Can't open "${p0.name}" — ${res.reason || 'access is no longer granted to this device.'}`);
+        return;
+      }
+      p0.accessPaused = !!res.paused;
+      doOpenProject(id);
+    });
+    return;
+  }
+  doOpenProject(id);
+}
+function doOpenProject(id){
   activeProjectId = id;
   const p = getActiveProject();
-  document.getElementById('projTag').textContent = `${p.name} · ${p.device}${p.appsScriptUrl ? ' · Cloud Sync ON' : ''}`;
+  const pausedTag = p.accessPaused ? ' · ⏸ PAUSED (view only)' : '';
+  document.getElementById('projTag').textContent = `${p.name} · ${p.device}${p.appsScriptUrl ? ' · Cloud Sync ON' : ''}${pausedTag}`;
   resetForm(true);
   renderSealChecklist(null);
   document.getElementById('dispatcherProjName').textContent = p.name;
   document.getElementById('dispatcherStatus').textContent = p.dispatcherSet.size
     ? `${p.dispatcherSet.size} meter numbers loaded for this project.` : '';
   renderRecentMini();
+  document.getElementById('pausedBanner').style.display = p.accessPaused ? 'block' : 'none';
+  const saveBtn = document.getElementById('saveEntryBtn');
+  saveBtn.disabled = !!p.accessPaused;
+  saveBtn.style.opacity = p.accessPaused ? '0.5' : '1';
   showTab('inspect');
 }
 function saveProjectCloudSettings(id){
@@ -1153,7 +1284,7 @@ document.getElementById('importSessionFile').addEventListener('change', function
    ============================================================ */
 function encodeShareCode(p){
   try{ return btoa(unescape(encodeURIComponent(JSON.stringify({
-    n:p.name, s:p.sheetId||'', u:p.appsScriptUrl||'', m:p.mrvNo||'', d:p.createdDateShort||''
+    n:p.name, s:p.sheetId||'', u:p.appsScriptUrl||'', m:p.mrvNo||'', d:p.createdDateShort||'', r:p.restrictedAccess?1:0
   })))); }
   catch(e){ return ''; }
 }
@@ -1234,22 +1365,36 @@ function joinProjectFromCode(){
   const proj = {
     id: 'p_' + Date.now() + Math.floor(Math.random()*1000),
     name: decoded.n || 'Joined Project', device, sheetId: decoded.s||'', appsScriptUrl: decoded.u||'',
-    mrvNo: decoded.m||'',
+    mrvNo: decoded.m||'', restrictedAccess: !!decoded.r, accessPaused: false,
     records: [], dispatcherSet: new Set(), srCounter: 1,
     createdAt: new Date().toLocaleString(),
     createdDateShort: decoded.d || new Date().toISOString().slice(0,10),
   };
-  projects.push(proj);
-  activeProjectId = proj.id;
-  if(proj.appsScriptUrl) entriesDefaultScriptUrl = proj.appsScriptUrl;
-  if(registryScriptUrl && registrySheetId && proj.sheetId && proj.appsScriptUrl) registerProjectInRegistry(proj);
-  closeJoinProjectModal();
-  renderProjectList();
-  if(proj.appsScriptUrl){
-    pullRecordsFromSheet(proj.id);
-    pullDispatcherFromSheet(proj.id);
+  const finishJoin = ()=>{
+    projects.push(proj);
+    activeProjectId = proj.id;
+    if(proj.appsScriptUrl) entriesDefaultScriptUrl = proj.appsScriptUrl;
+    if(registryScriptUrl && registrySheetId && proj.sheetId && proj.appsScriptUrl) registerProjectInRegistry(proj);
+    closeJoinProjectModal();
+    renderProjectList();
+    if(proj.appsScriptUrl){
+      pullRecordsFromSheet(proj.id);
+      pullDispatcherFromSheet(proj.id);
+    } else {
+      alert('Joined locally, but this code had no Apps Script URL attached, so there\'s nothing to pull in yet.');
+    }
+  };
+  if(proj.restrictedAccess){
+    checkAccessForProject(proj).then(res=>{
+      if(!res.allowed){
+        alert(`Could not join "${proj.name}" — ${res.reason || 'access has not been granted to this device.'}\n\nAsk the project owner to grant access to the device name you typed: "${device}" (must match exactly).`);
+        return;
+      }
+      proj.accessPaused = !!res.paused;
+      finishJoin();
+    });
   } else {
-    alert('Joined locally, but this code had no Apps Script URL attached, so there\'s nothing to pull in yet.');
+    finishJoin();
   }
 }
 
@@ -1352,6 +1497,80 @@ function verifyRegistration(p, statusEl, attempt){
     }
   });
 }
+
+/* ============================================================
+   RESTRICTED ACCESS — opt-in per project. When on, a project only
+   auto-restores/joins for devices explicitly granted access, with
+   an optional expiry. Managed day-to-day by editing the
+   "Access - [Project Name]" tab this creates in the Registry Sheet.
+   ============================================================ */
+function enableRestrictedAccess(id){
+  const p = projects.find(x=>x.id===id);
+  if(!p || !registryScriptUrl || !registrySheetId || !p.sheetId) return;
+  p.restrictedAccess = true;
+  renderProjectList();
+  fetch(registryScriptUrl, {
+    method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({ action:'setupRestrictedProject', sheetId:registrySheetId, projectSheetId:p.sheetId, projectName:p.name })
+  }).catch(()=>{});
+}
+function grantAccessToDevice(id){
+  const p = projects.find(x=>x.id===id);
+  const statusEl = document.getElementById('pcStatus-'+id);
+  const deviceName = document.getElementById('pcGrantDevice-'+id).value.trim();
+  const hoursSelect = document.getElementById('pcGrantHours-'+id).value;
+  const customEl = document.getElementById('pcGrantCustomHours-'+id);
+  const hours = hoursSelect==='custom' ? (parseFloat(customEl.value) || 24) : (parseFloat(hoursSelect) || 24);
+  if(!deviceName){ alert('Enter the device name to grant access to.'); return; }
+  if(!registryScriptUrl || !registrySheetId){ if(statusEl) statusEl.textContent = '⚠ Set up the Auto-Restore registry in Settings first.'; return; }
+  if(statusEl) statusEl.textContent = `Granting ${hours}h access to "${deviceName}"…`;
+  fetch(registryScriptUrl, {
+    method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({ action:'grantAccess', sheetId:registrySheetId, projectSheetId:p.sheetId, projectName:p.name, deviceName, durationHours:hours })
+  }).then(()=>{
+    if(statusEl) statusEl.textContent = `✓ Sent — "${deviceName}" can now Join via Code for the next ${hours} hour(s). They must type that exact device name when joining.`;
+    document.getElementById('pcGrantDevice-'+id).value = '';
+  }).catch(()=>{
+    if(statusEl) statusEl.textContent = '⚠ Could not send the grant — check your connection and try again.';
+  });
+}
+// Returns a Promise resolving to {allowed, paused, reason}. Unrestricted projects always resolve allowed.
+function checkAccessForProject(p){
+  if(!p.restrictedAccess) return Promise.resolve({allowed:true, paused:false});
+  if(!registryScriptUrl || !registrySheetId || !p.device){
+    return Promise.resolve({allowed:false, paused:false, reason:'Registry or device name not set.'});
+  }
+  return jsonpRequest(registryScriptUrl, {
+    action:'checkAccess', sheetId:registrySheetId, projectSheetId:p.sheetId, projectName:p.name, deviceName:p.device
+  }).then(res=>{
+    if(!res || !res.found) return {allowed:false, paused:false, reason:'This device has not been granted access.'};
+    if(res.status==='Restricted') return {allowed:false, paused:false, reason:'Access has been restricted for this device.'};
+    if(res.expired) return {allowed:false, paused:false, reason:'Access has expired.'};
+    if(res.status==='Paused') return {allowed:true, paused:true, reason:'Access is paused — view only.'};
+    return {allowed:true, paused:false};
+  }).catch(()=>({allowed:true, paused:false, reason:'(could not verify just now — showing last known state)'}));
+}
+// Re-checks every already-known restricted project on this device; removes ones that lost access,
+// updates the paused flag on ones that changed. Runs after every successful restore.
+function revalidateRestrictedProjects(){
+  const toCheck = projects.filter(p=>p.restrictedAccess);
+  if(!toCheck.length) return;
+  Promise.all(toCheck.map(p=>checkAccessForProject(p).then(res=>({p, res})))).then(results=>{
+    let removed = 0;
+    results.forEach(({p, res})=>{
+      if(!res.allowed){
+        projects = projects.filter(x=>x.id!==p.id);
+        if(activeProjectId===p.id) activeProjectId = null;
+        removed++;
+      } else {
+        p.accessPaused = !!res.paused;
+      }
+    });
+    if(removed>0) renderProjectList();
+    if(activeProjectId===null) refreshInspectVisibility();
+  });
+}
+
 function restoreProjectsFromRegistry(regScriptUrl, regSheetId, entriesUrl, attempt){
   attempt = attempt || 1;
   registryScriptUrl = regScriptUrl;
@@ -1368,15 +1587,16 @@ function restoreProjectsFromRegistry(regScriptUrl, regSheetId, entriesUrl, attem
   jsonpRequest(regScriptUrl, {action:'listProjects', sheetId:registrySheetId}).then(data=>{
     const list = (data && data.projects) || [];
     if(list.length === 0){ showRestoreStatus('No projects found yet in this registry.'); return; }
-    let restored = 0;
+    let restored = 0, skippedRestricted = 0;
     list.forEach(item=>{
       if(!item.sheetId) return;
       const already = projects.find(p=>p.sheetId===item.sheetId);
       if(already) return;
+      if(item.restricted){ skippedRestricted++; return; } // must Join via Code, which checks access properly
       const proj = {
         id: 'p_' + Date.now() + Math.floor(Math.random()*100000),
         name: item.name || 'Restored Project', device: 'This device',
-        mrvNo: item.mrvNo||'',
+        mrvNo: item.mrvNo||'', restrictedAccess: false, accessPaused: false,
         sheetId: item.sheetId, appsScriptUrl: entriesDefaultScriptUrl || '',
         records: [], dispatcherSet: new Set(), srCounter: 1,
         createdAt: item.createdAt || new Date().toLocaleString(),
@@ -1388,9 +1608,11 @@ function restoreProjectsFromRegistry(regScriptUrl, regSheetId, entriesUrl, attem
     });
     renderProjectList();
     updateRegistryReminder();
+    revalidateRestrictedProjects();
+    const restrictedNote = skippedRestricted>0 ? ` ${skippedRestricted} restricted project(s) need "Join via Code" on this device.` : '';
     showRestoreStatus(restored>0
-      ? `✓ Restored ${restored} project(s) automatically. ${entriesDefaultScriptUrl ? 'Records are loading in the background.' : '⚠ No entries script URL was saved with your link — open each project\'s card and paste its Apps Script URL to resume syncing.'} Check each project's Device name on its card too.`
-      : 'Projects already loaded — nothing new to restore.');
+      ? `✓ Restored ${restored} project(s) automatically. ${entriesDefaultScriptUrl ? 'Records are loading in the background.' : '⚠ No entries script URL was saved with your link — open each project\'s card and paste its Apps Script URL to resume syncing.'} Check each project's Device name on its card too.${restrictedNote}`
+      : `Projects already loaded — nothing new to restore.${restrictedNote}`);
   }).catch(err=>{
     if(attempt < 5){
       showRestoreStatus(`Connection hiccup — retrying automatically… (${attempt}/5)`);
@@ -1587,6 +1809,8 @@ function renderProjectList(){
           <div class="pc-name">${p.name}</div>
           <div class="pc-meta">${p.device} · Created ${p.createdAt} · ${p.records.length} record(s)</div>
           <span class="pc-badge ${cloudOn ? 'on' : 'off'}">${cloudOn ? '☁ Cloud Sync ON' : '☁ Cloud Sync not linked'}</span>
+          ${p.restrictedAccess ? '<span class="pc-badge on" style="background:#3d2f6b; color:#fff;">🔒 Restricted Access</span>' : ''}
+          ${p.accessPaused ? '<span class="pc-badge off" style="background:#7a5a10; color:#fff;">⏸ Paused (view only)</span>' : ''}
         </div>
         <button class="pill-btn" onclick="openProject('${p.id}')">Open</button>
       </div>
@@ -1615,6 +1839,30 @@ function renderProjectList(){
           <button class="btn outline small" onclick="pullRecordsFromSheet('${p.id}')">🔄 Sync from Sheet</button>
         </div>
         <button class="btn outline small" style="margin-top:8px;" onclick="manualRegisterProject('${p.id}')">📋 Register in Auto-Restore List</button>
+
+        ${p.restrictedAccess ? `
+        <label class="field-label" style="margin-top:12px;">🔒 Grant Access to a Device</label>
+        <div class="row">
+          <input type="text" id="pcGrantDevice-${p.id}" placeholder="Exact device name to grant">
+          <select id="pcGrantHours-${p.id}" style="flex:0 0 90px;" onchange="document.getElementById('pcGrantCustomHours-${p.id}').style.display = this.value==='custom' ? 'block' : 'none';">
+            <option value="24">24h</option>
+            <option value="72">72h</option>
+            <option value="168">7 days</option>
+            <option value="custom">Custom…</option>
+          </select>
+        </div>
+        <input type="number" id="pcGrantCustomHours-${p.id}" placeholder="Custom hours" style="display:none; margin-top:6px;">
+        <button class="btn amber small" style="margin-top:6px;" onclick="grantAccessToDevice('${p.id}')">Grant Access</button>
+        <div class="subtext" style="margin-top:4px;">
+          Manage existing grants (Allowed / Restricted / Paused) in the <code>Access - ${p.name}</code> tab of your
+          Registry Sheet.
+        </div>` : `
+        <div class="row" style="margin-top:12px;">
+          <label style="display:flex; align-items:center; gap:6px; font-size:13px; flex:1;">
+            <input type="checkbox" onclick="if(this.checked && !confirm('Turn on Restricted Access for this project? Only devices you explicitly grant will be able to join it.')){ this.checked=false; } else if(this.checked){ enableRestrictedAccess('${p.id}'); }" style="width:auto;">
+            🔒 Turn on Restricted Access for this project
+          </label>
+        </div>`}
         <div class="ocr-status" id="pcStatus-${p.id}"></div>
       </div>
 
@@ -2286,6 +2534,7 @@ function compressList(list, maxW, quality){
 function saveRecord(){
   const p = getActiveProject();
   if(!p){ alert('Open a project first.'); return; }
+  if(p.accessPaused){ alert('This project is currently paused for this device — you can view it, but not save new entries. Ask the project owner to set it back to Allowed.'); return; }
   const meterNo = document.getElementById('meterNo').value.trim();
   if(!meterNo){ alert('Please enter or scan a Meter No. before saving.'); flagFieldNeeded('meterNo'); return; }
 
