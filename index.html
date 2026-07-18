@@ -698,10 +698,10 @@ function appendToPrintSheet(ss, data) {
     sheet = ss.insertSheet('List For Print');
     sheet.getRange(1, 1, 1, 7).merge().setValue('Meter Receiving Register')
       .setFontWeight('bold').setFontSize(14).setHorizontalAlignment('center');
-    sheet.getRange(2, 1).setValue('MR No: ' + (data.mrvNo || '-'));
-    sheet.getRange(2, 3).setValue('Date: ' + (data.projectDate || '-'));
-    sheet.getRange(2, 5).setValue('Meter Dispatch Section Name: ' + (data.project || '-'));
-    sheet.getRange(2, 1, 1, 5).setFontWeight('bold');
+    sheet.getRange(2, 1, 1, 2).merge().setValue('MR No: ' + (data.mrvNo || '-'));
+    sheet.getRange(2, 3, 1, 2).merge().setValue('Date: ' + (data.projectDate || '-'));
+    sheet.getRange(2, 5, 1, 3).merge().setValue('Meter Dispatch Section Name: ' + (data.project || '-'));
+    sheet.getRange(2, 1, 1, 7).setFontWeight('bold');
     sheet.getRange(HEADER_ROW, 1, 1, 7).setValues([[
       'Sr. No.', 'Meter No.', 'Meter Type', 'Meter Reading',
       'Physically Condition of Meters', 'Documents Status', 'Remarks'
@@ -738,11 +738,16 @@ function appendToPrintSheet(ss, data) {
     data.printPhysicalRemarks || '-', data.printDocumentsRemarks || '-', data.remarks || ''
   ]]);
 
-  var sigRow = newRow + 2; // one blank row of spacing above the signature block
-  sheet.getRange(sigRow, 1).setValue(SIG_MARKER + ': ____________________');
-  sheet.getRange(sigRow, 3).setValue('Meter Dispatch Section Representative Sign: ____________________');
-  sheet.getRange(sigRow, 5).setValue('Technical Officer (Metering) Sign: ____________________');
+  var sigRow = newRow + 3; // extra blank spacing above the signature block
+  sheet.getRange(sigRow, 1, 1, 2).merge().setValue(SIG_MARKER + ': ____________________');
+  sheet.getRange(sigRow, 3, 1, 3).merge().setValue('Meter Dispatch Section Representative Sign: ____________________');
+  sheet.getRange(sigRow, 6, 1, 2).merge().setValue('Technical Officer (Metering) Sign: ____________________');
   sheet.getRange(sigRow, 1, 1, 7).setFontWeight('bold');
+
+  var idRow = sigRow + 1;
+  sheet.getRange(idRow, 1, 1, 2).merge().setValue('Employee #/SN #/CNIC #: ____________________');
+  sheet.getRange(idRow, 3, 1, 3).merge().setValue('Employee #/SN #/CNIC #: ____________________');
+  sheet.getRange(idRow, 6, 1, 2).merge().setValue('Name: ____________________');
 }
 
 function doGet(e) {
