@@ -577,9 +577,14 @@ function output(result, callback) {
       <code>Condition Photo URLs</code>, <code>OGRA Photo URLs</code>, <code>MRC Photo URLs</code> — new Sheets
       get this automatically.
       <b>New:</b> every save now also writes a condensed, anomaly-only row into a second tab called
-      <code>List For Print</code> in the same Sheet — <code>DMIS Receiving</code> keeps every field exactly as
-      before, unchanged. This only applies to entries saved from now on; nothing already in your Sheets gets
-      backfilled.
+      <code>List For Print</code> in the same Sheet, now with a <code>Remarks</code> column for your free-text
+      notes — <code>DMIS Receiving</code> keeps every field exactly as before, unchanged. This only applies to
+      entries saved from now on; nothing already in your Sheets gets backfilled.
+      <b>Page numbers and a repeating print header/footer</b> can't be set by this script — Google's API simply
+      doesn't expose those settings, they only exist in the Print dialog. One-time manual fix per Sheet: open
+      the <code>List For Print</code> tab → <b>File → Print</b> → under "Headers &amp; footers," turn on page
+      numbers and set repeated top/bottom text if you want it → this choice is remembered by the Sheet going
+      forward, no need to redo it per entry.
       <b>To grant Drive access:</b> in the function dropdown next to ▶ Run, select
       <code>authorizeDriveAccess</code> — not <code>doPost</code>, since doPost exits before touching Drive when
       run manually and will never trigger the permission prompt — then click Run and approve the popup.
@@ -680,44 +685,64 @@ function doPost(e) {
 
 // Writes one row into "List For Print" — a condensed, anomaly-only register formatted for
 // printing — while keeping the DMIS/Dispatch/Technical Officer signature block pinned to the
-// true bottom of the sheet every time a new entry is added.
+// true bottom of the sheet every time a new entry is added. Uses exact row numbers throughout
+// (not chained appendRow calls) since appendRow([]) for spacer rows behaves unreliably and was
+// the cause of the header row going missing in an earlier version.
 function appendToPrintSheet(ss, data) {
   var sheet = ss.getSheetByName('List For Print');
+  var HEADER_ROW = 4;
+  var FIRST_DATA_ROW = 5;
+  var SIG_MARKER = 'DMIS Fsd Representative Sign';
+
   if (!sheet) {
     sheet = ss.insertSheet('List For Print');
-    sheet.appendRow(['Meter Receiving Register']);
-    sheet.getRange(1, 1, 1, 6).merge().setFontWeight('bold').setFontSize(14).setHorizontalAlignment('center');
-    sheet.appendRow(['MR No: ' + (data.mrvNo || '-'), '', 'Date: ' + (data.projectDate || '-'), '',
-      'Meter Dispatch Section Name: ' + (data.project || '-'), '']);
-    sheet.getRange(2, 1, 1, 6).setFontWeight('bold');
-    sheet.appendRow([]);
-    sheet.appendRow(['Sr. No.', 'Meter No.', 'Meter Type', 'Meter Reading',
-      'Physically Condition of Meters', 'Documents Status']);
-    sheet.getRange(4, 1, 1, 6).setFontWeight('bold').setBackground('#eef1f3');
-    for (var c = 1; c <= 6; c++) sheet.setColumnWidth(c, c <= 2 ? 90 : c === 5 || c === 6 ? 220 : 130);
-  } else {
-    // Find and remove the existing signature block so the new row lands right above it.
-    var values = sheet.getDataRange().getValues();
-    var sigStartRow = -1;
-    for (var r = 0; r < values.length; r++) {
-      if (String(values[r][0]).indexOf('DMIS Representative') !== -1) { sigStartRow = r + 1; break; }
-    }
-    if (sigStartRow > 0) {
-      sheet.deleteRows(sigStartRow, sheet.getLastRow() - sigStartRow + 1);
+    sheet.getRange(1, 1, 1, 7).merge().setValue('Meter Receiving Register')
+      .setFontWeight('bold').setFontSize(14).setHorizontalAlignment('center');
+    sheet.getRange(2, 1).setValue('MR No: ' + (data.mrvNo || '-'));
+    sheet.getRange(2, 3).setValue('Date: ' + (data.projectDate || '-'));
+    sheet.getRange(2, 5).setValue('Meter Dispatch Section Name: ' + (data.project || '-'));
+    sheet.getRange(2, 1, 1, 5).setFontWeight('bold');
+    sheet.getRange(HEADER_ROW, 1, 1, 7).setValues([[
+      'Sr. No.', 'Meter No.', 'Meter Type', 'Meter Reading',
+      'Physically Condition of Meters', 'Documents Status', 'Remarks'
+    ]]).setFontWeight('bold').setBackground('#eef1f3');
+    sheet.setColumnWidth(1, 60);
+    sheet.setColumnWidth(2, 110);
+    sheet.setColumnWidth(3, 110);
+    sheet.setColumnWidth(4, 110);
+    sheet.setColumnWidth(5, 260);
+    sheet.setColumnWidth(6, 260);
+    sheet.setColumnWidth(7, 160);
+    sheet.setFrozenRows(HEADER_ROW);
+    // One uniform font size + wrap for the two anomaly columns, applied once across a large
+    // range so every row — present and future — looks the same, rather than resizing per row.
+    sheet.getRange(FIRST_DATA_ROW, 5, 995, 2).setFontSize(9).setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP)
+      .setVerticalAlignment('top');
+  }
+
+  // Remove any existing signature block first, so new data always lands at the true bottom.
+  var lastRow = sheet.getLastRow();
+  if (lastRow >= FIRST_DATA_ROW) {
+    var colA = sheet.getRange(FIRST_DATA_ROW, 1, lastRow - FIRST_DATA_ROW + 1, 1).getValues();
+    for (var i = 0; i < colA.length; i++) {
+      if (String(colA[i][0]).indexOf(SIG_MARKER) !== -1) {
+        sheet.deleteRows(FIRST_DATA_ROW + i, lastRow - (FIRST_DATA_ROW + i) + 1);
+        break;
+      }
     }
   }
 
-  sheet.appendRow([
+  var newRow = Math.max(sheet.getLastRow() + 1, FIRST_DATA_ROW);
+  sheet.getRange(newRow, 1, 1, 7).setValues([[
     data.sr, data.meterNo, data.meterType, data.reading,
-    data.printPhysicalRemarks || '-', data.printDocumentsRemarks || '-'
-  ]);
+    data.printPhysicalRemarks || '-', data.printDocumentsRemarks || '-', data.remarks || ''
+  ]]);
 
-  sheet.appendRow([]);
-  sheet.appendRow([]);
-  sheet.appendRow(['DMIS Representative Sign: ____________________', '',
-    'Meter Dispatch Section Representative Sign: ____________________', '',
-    'Technical Officer (Metering) Sign: ____________________', '']);
-  sheet.getRange(sheet.getLastRow(), 1, 1, 6).setFontWeight('bold');
+  var sigRow = newRow + 2; // one blank row of spacing above the signature block
+  sheet.getRange(sigRow, 1).setValue(SIG_MARKER + ': ____________________');
+  sheet.getRange(sigRow, 3).setValue('Meter Dispatch Section Representative Sign: ____________________');
+  sheet.getRange(sigRow, 5).setValue('Technical Officer (Metering) Sign: ____________________');
+  sheet.getRange(sigRow, 1, 1, 7).setFontWeight('bold');
 }
 
 function doGet(e) {
@@ -2171,10 +2196,15 @@ function summarizeDocs(){
 
 /* ============================================================
    PRINT-SHEET REMARKS — plain-language anomaly-only summaries for
-   the "List For Print" tab. Physical Condition shows "-" if nothing
-   is wrong and no free-text remarks were entered. Documents Status
-   always carries the consumer presence line, plus any anomalies.
+   the "List For Print" tab. Both columns show "-" when nothing is
+   wrong. Each anomaly phrase ends with a period, single space before
+   the next one. Free-text remarks go in their own Remarks column,
+   not mixed into Physical Condition.
    ============================================================ */
+function joinAnomalyParts(parts){
+  if(!parts.length) return '-';
+  return parts.map(p=>p.trim().replace(/\.+$/,'')).join('. ') + '.';
+}
 function buildPrintPhysicalRemarks(rec){
   const parts = [];
   if(rec.counterGlass==='damaged') parts.push('Index Counter damage');
@@ -2183,8 +2213,7 @@ function buildPrintPhysicalRemarks(rec){
   if(rec.indexSealStatus==='missing') parts.push(`${rec.indexSealFound||0}/${rec.indexSealTotal||0} Index seals missing`);
   if(rec.bodyCondition==='damaged') parts.push('Body damage');
   if(rec.bodySealStatus==='missing') parts.push(`${rec.bodySealFound||0}/${rec.bodySealTotal||0} Body seals missing`);
-  if(rec.remarks && rec.remarks.trim()) parts.push(rec.remarks.trim());
-  return parts.length ? parts.join(' ') : '-';
+  return joinAnomalyParts(parts);
 }
 function buildPrintDocumentsRemarks(rec){
   const parts = [];
@@ -2218,12 +2247,13 @@ function buildPrintDocumentsRemarks(rec){
   if(rec.docReasonReplacement==='missing_ogra') parts.push('Reason for replacement missing at OGRA Form');
   else if(rec.docReasonReplacement==='missing_mrc') parts.push('Reason for replacement missing at MRC');
 
-  // Always present, last — only "not_mentioned" (or blank) counts as an anomaly.
-  if(rec.docConsumerInspStatus==='with_presence') parts.push('Consumer wants Meter inspection in his presence');
-  else if(rec.docConsumerInspStatus==='without_presence') parts.push('Consumer willing without presence as per OGRA form');
-  else parts.push('Nothing mentioned whether consumer wants inspection in his presence or not');
+  // Only the "nothing mentioned" case is an anomaly — Wants Presence / Without Presence are both
+  // fine outcomes and don't get written here at all.
+  if(rec.docConsumerInspStatus!=='with_presence' && rec.docConsumerInspStatus!=='without_presence'){
+    parts.push('Nothing mentioned regarding consumer consent to inspect meter in DMIS in his presence or not');
+  }
 
-  return parts.join(' ');
+  return joinAnomalyParts(parts);
 }
 
 /* Downscales + compresses a captured photo before upload, to keep field uploads fast on weak connections.
